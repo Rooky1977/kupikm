@@ -40,6 +40,8 @@ export function ArchivePage() {
   const renameRememberedItem = useAppStore((s) => s.renameRememberedItem);
   const deleteRememberedItem = useAppStore((s) => s.deleteRememberedItem);
   const saveAlias = useAppStore((s) => s.saveAlias);
+  const addAllFromReceipt = useAppStore((s) => s.addAllFromReceipt);
+  const setReceiptExtraordinary = useAppStore((s) => s.setReceiptExtraordinary);
 
   const [tab, setTab] = useState<'racuni' | 'artikli' | 'katalog'>('racuni');
   const [query, setQuery] = useState('');
@@ -63,6 +65,10 @@ export function ArchivePage() {
   const [editReceiptIdx, setEditReceiptIdx] = useState<number | null>(null);
   const [editRcptPrice, setEditRcptPrice] = useState('');
   const [editRcptQty, setEditRcptQty] = useState('');
+  const [receiptExtraordinary, setReceiptExtraordinaryDraft] = useState(false);
+  const [receiptPage, setReceiptPage] = useState(0);
+  const [articlePage, setArticlePage] = useState(0);
+  const PAGE_SIZE = 20;
 
   const grouped = useMemo(() => {
     const map = new Map<
@@ -97,6 +103,18 @@ export function ArchivePage() {
     if (q) rows = rows.filter((r) => normalizeItemKey(r.name).includes(q));
     return rows.sort((a, b) => b.last.localeCompare(a.last));
   }, [archive, query]);
+
+  const sortedReceipts = useMemo(
+    () => [...receipts].sort((a, b) => b.date.localeCompare(a.date)),
+    [receipts],
+  );
+  const receiptPages = Math.max(1, Math.ceil(sortedReceipts.length / PAGE_SIZE));
+  const pagedReceipts = sortedReceipts.slice(
+    receiptPage * PAGE_SIZE,
+    receiptPage * PAGE_SIZE + PAGE_SIZE,
+  );
+  const articlePages = Math.max(1, Math.ceil(grouped.length / PAGE_SIZE));
+  const pagedArticles = grouped.slice(articlePage * PAGE_SIZE, articlePage * PAGE_SIZE + PAGE_SIZE);
 
   const detail = historyItemKey
     ? archive
@@ -267,10 +285,12 @@ export function ArchivePage() {
       total: totalNum,
       imageDataUrl,
       source: imageDataUrl ? 'ai' : 'manual',
+      isExtraordinary: receiptExtraordinary,
     });
     setShowAdd(false);
     setDraftItems([]);
     setImageDataUrl(undefined);
+    setReceiptExtraordinaryDraft(false);
     setMsg('Račun sačuvan. Arhiva artikala i cijene su ažurirane. Budžet je preračunat.');
     setTab('racuni');
   };
@@ -505,6 +525,15 @@ export function ArchivePage() {
             <input className="input" inputMode="decimal" value={total} onChange={(e) => setTotal(e.target.value)} />
           </label>
 
+          <label className="switch-row">
+            <input
+              type="checkbox"
+              checked={receiptExtraordinary}
+              onChange={(e) => setReceiptExtraordinaryDraft(e.target.checked)}
+            />
+            <span>Vanredni trošak (ne ulazi u mjesečni budžet)</span>
+          </label>
+
           {msg && <p className="muted" style={{ margin: 0 }}>{msg}</p>}
 
           <button type="submit" className="btn btn-action" disabled={busy}>
@@ -516,7 +545,7 @@ export function ArchivePage() {
       {tab === 'racuni' && (
         <div className="desktop-layout">
           <section className="stack">
-            {receipts.map((r) => (
+            {pagedReceipts.map((r) => (
               <button
                 key={r.id}
                 type="button"
@@ -537,6 +566,7 @@ export function ArchivePage() {
                       <strong>{r.storeName}</strong>
                       <div className="muted" style={{ fontSize: '0.85rem' }}>
                         {format(new Date(r.date), 'd. MMMM yyyy.', { locale: bs })} · {r.items.length} stavki
+                        {r.isExtraordinary ? ' · vanredni' : ''}
                       </div>
                     </div>
                   </div>
@@ -545,6 +575,29 @@ export function ArchivePage() {
               </button>
             ))}
             {!receipts.length && <div className="card muted">Nema sačuvanih računa.</div>}
+            {receipts.length > PAGE_SIZE && (
+              <div className="row" style={{ justifyContent: 'center' }}>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-ghost"
+                  disabled={receiptPage <= 0}
+                  onClick={() => setReceiptPage((p) => p - 1)}
+                >
+                  ← Prethodna
+                </button>
+                <span className="muted" style={{ fontSize: '0.85rem' }}>
+                  {receiptPage + 1} / {receiptPages}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-ghost"
+                  disabled={receiptPage >= receiptPages - 1}
+                  onClick={() => setReceiptPage((p) => p + 1)}
+                >
+                  Sljedeća →
+                </button>
+              </div>
+            )}
           </section>
           <aside className="card stack">
             <h2 style={{ margin: 0, fontSize: '1.05rem' }}>
@@ -555,6 +608,37 @@ export function ArchivePage() {
               <>
                 <div className="muted">
                   {formatDateTime(receiptDetail.date)} · {formatKm(receiptDetail.total)}
+                </div>
+                <div className="row" style={{ flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-action"
+                    onClick={() => {
+                      const n = addAllFromReceipt(receiptDetail.id);
+                      setMsg(
+                        n > 0
+                          ? `Dodano ${n} artikala sa računa na spisak.`
+                          : 'Svi artikli sa računa su već na spisku.',
+                      );
+                    }}
+                  >
+                    Dodaj sve na spisak
+                  </button>
+                  <label className="switch-row" style={{ margin: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(receiptDetail.isExtraordinary)}
+                      onChange={(e) => {
+                        setReceiptExtraordinary(receiptDetail.id, e.target.checked);
+                        setMsg(
+                          e.target.checked
+                            ? 'Račun označen kao vanredni trošak (isključen iz budžeta).'
+                            : 'Račun ponovo ulazi u mjesečni budžet.',
+                        );
+                      }}
+                    />
+                    <span>Vanredni trošak</span>
+                  </label>
                 </div>
                 {receiptDetail.imageDataUrl && (
                   <img
@@ -705,7 +789,7 @@ export function ArchivePage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
-            {grouped.map((g) => {
+            {pagedArticles.map((g) => {
               const superDeal = isSuperPrice(archive, g.name, g.lastPrice);
               return (
                 <button
@@ -732,6 +816,29 @@ export function ArchivePage() {
                 </button>
               );
             })}
+            {grouped.length > PAGE_SIZE && (
+              <div className="row" style={{ justifyContent: 'center' }}>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-ghost"
+                  disabled={articlePage <= 0}
+                  onClick={() => setArticlePage((p) => p - 1)}
+                >
+                  ← Prethodna
+                </button>
+                <span className="muted" style={{ fontSize: '0.85rem' }}>
+                  {articlePage + 1} / {articlePages}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-ghost"
+                  disabled={articlePage >= articlePages - 1}
+                  onClick={() => setArticlePage((p) => p + 1)}
+                >
+                  Sljedeća →
+                </button>
+              </div>
+            )}
           </section>
           <aside className="card stack">
             <h2 style={{ margin: 0, fontSize: '1.05rem' }}>

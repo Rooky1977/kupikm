@@ -55,7 +55,7 @@ export function BudgetPage() {
       <div className="page-header">
         <div>
           <h1>Budžet</h1>
-          <p>{formatMonthLabel(key)}</p>
+          <p>{formatMonthLabel(key)} · vanredni troškovi nisu uračunati</p>
         </div>
       </div>
 

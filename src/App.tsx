@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppShell } from './components/layout/AppShell';
+import { ErrorBoundary } from './components/layout/ErrorBoundary';
 import { ArchivePage } from './pages/ArchivePage';
 import { BudgetPage } from './pages/BudgetPage';
 import { ListPage } from './pages/ListPage';
@@ -39,20 +40,22 @@ function AuthGate({ children }: { children: ReactNode }) {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AuthGate>
-        <Routes>
-          <Route element={<AppShell />}>
-            <Route index element={<ListPage />} />
-            <Route path="radnje" element={<StoresPage />} />
-            <Route path="arhiva" element={<ArchivePage />} />
-            <Route path="historija" element={<Navigate to="/arhiva" replace />} />
-            <Route path="budzet" element={<BudgetPage />} />
-            <Route path="podesavanja" element={<SettingsPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Route>
-        </Routes>
-      </AuthGate>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AuthGate>
+          <Routes>
+            <Route element={<AppShell />}>
+              <Route index element={<ListPage />} />
+              <Route path="radnje" element={<StoresPage />} />
+              <Route path="arhiva" element={<ArchivePage />} />
+              <Route path="historija" element={<Navigate to="/arhiva" replace />} />
+              <Route path="budzet" element={<BudgetPage />} />
+              <Route path="podesavanja" element={<SettingsPage />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Route>
+          </Routes>
+        </AuthGate>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }

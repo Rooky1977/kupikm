@@ -50,6 +50,13 @@ export interface ArchiveEntry {
   listId: string;
   source: 'cart' | 'manual' | 'receipt' | 'demo';
   receiptId?: string;
+  /** Cijena normalizovana na 1 kg / 1 L kada je moguće */
+  normalizedUnitPrice?: number;
+  /** Veličina pakovanja u baznoj jedinici (kg/L/kom) */
+  packSize?: number;
+  isPromo?: boolean;
+  isExtraordinary?: boolean;
+  barcode?: string;
 }
 
 export interface ReceiptItem {
@@ -59,6 +66,8 @@ export interface ReceiptItem {
   unitPrice: number;
   lineTotal: number;
   category: Category;
+  isPromo?: boolean;
+  isExtraordinary?: boolean;
 }
 
 export interface Receipt {
@@ -72,6 +81,8 @@ export interface Receipt {
   note?: string;
   createdAt: string;
   source: 'camera' | 'upload' | 'manual' | 'ai' | 'demo';
+  /** Cijeli račun van redovnog mjesečnog budžeta */
+  isExtraordinary?: boolean;
 }
 
 export interface CatalogVariant {
@@ -97,6 +108,7 @@ export interface RememberedItem {
   category: Category;
   keywords: string[];
   createdAt: string;
+  barcode?: string;
 }
 
 export interface ListItem {
@@ -113,6 +125,9 @@ export interface ListItem {
   priceDelta?: number;
   catalogId?: string;
   notes?: string;
+  barcode?: string;
+  isPromo?: boolean;
+  isExtraordinary?: boolean;
 }
 
 export interface ShoppingList {
@@ -122,7 +137,18 @@ export interface ShoppingList {
   items: ListItem[];
   selectedStoreIds: string[];
   activeStoreId?: string;
+  /** Redoslijed zona/kategorija na spisku */
+  zoneOrder?: Category[];
   updatedAt: string;
+}
+
+export interface LoyaltyCard {
+  id: string;
+  name: string;
+  storeBrand?: string;
+  cardNumber: string;
+  imageDataUrl?: string;
+  createdAt: string;
 }
 
 export interface CompletedTrip {
@@ -201,7 +227,36 @@ export interface AppSettings {
   groqApiKey: string;
   firebaseConfigured: boolean;
   useMockData: boolean;
+  keepScreenOn: boolean;
 }
+
+export interface PriceSanityResult {
+  ok: boolean;
+  ratio: number;
+  reference: number;
+  message?: string;
+}
+
+export interface ShrinkflationResult {
+  detected: boolean;
+  previousPackSize?: number;
+  currentPackSize?: number;
+  message?: string;
+}
+
+export const DEFAULT_ZONE_ORDER: Category[] = [
+  'voce-povrce',
+  'pekara',
+  'mlijecno',
+  'meso',
+  'ostava',
+  'pice',
+  'slatkisi',
+  'cigarete',
+  'hemija',
+  'kucanstvo',
+  'ostalo',
+];
 
 export interface StoreEstimate {
   storeId: string;

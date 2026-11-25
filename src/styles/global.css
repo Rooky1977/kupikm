@@ -916,3 +916,98 @@ a {
     display: flex;
   }
 }
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.switch-row input {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--action);
+}
+
+.alert-warn {
+  padding: 0.75rem 0.9rem;
+  border-radius: var(--radius-sm);
+  background: #fffbeb;
+  border: 1px solid #fbbf24;
+  color: #92400e;
+  font-size: 0.9rem;
+}
+
+[data-theme='dark'] .alert-warn {
+  background: #422006;
+  border-color: #b45309;
+  color: #fde68a;
+}
+
+.barcode-video {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: #0f172a;
+}
+
+.zone-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.15rem 0.35rem;
+  border-radius: 999px;
+  background: var(--bg-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.loyalty-modal {
+  max-width: 480px;
+  width: min(480px, 100%);
+}
+
+.loyalty-fullscreen {
+  text-align: center;
+  background: #fff;
+  color: #0f172a;
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.loyalty-barcode {
+  padding: 1rem 0.5rem;
+}
+
+.loyalty-bars {
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  height: 96px;
+  gap: 0;
+}
+
+.loyalty-bars span {
+  display: block;
+  height: 100%;
+}
+
+.loyalty-code-text {
+  margin-top: 0.5rem;
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.12em;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.loyalty-img {
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border-radius: 8px;
+}

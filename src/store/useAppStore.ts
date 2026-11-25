@@ -20,10 +20,12 @@ import {
   initFirebase,
   isFirebaseConfigured,
   joinFamilySpace,
+  deleteLoyaltyCardDoc,
   pushAlias,
   pushArchiveEntry,
   pushFamilyBudget,
   pushFamilyList,
+  pushLoyaltyCard,
   pushReceipt,
   pushRememberedItem,
   pushTemplate,
@@ -39,6 +41,7 @@ import {
 } from '../lib/firebase';
 import { cityFallbackLocation, requestUserLocation } from '../lib/geolocation';
 import { monthKey, normalizeItemKey, uid } from '../lib/format';
+import { normalizedUnitPrice } from '../lib/priceChecks';
 import {
   buildStoreEstimates,
   computeCirka,
@@ -54,6 +57,7 @@ import type {
   GeoPoint,
   ItemAlias,
   ListItem,
+  LoyaltyCard,
   Receipt,
   ReceiptItem,
   RememberedItem,
@@ -65,6 +69,7 @@ import type {
   Unit,
   UserProfile,
 } from '../types';
+import { DEFAULT_ZONE_ORDER } from '../types';
 
 interface AppState {
   user: UserProfile | null;
@@ -79,6 +84,7 @@ interface AppState {
   templates: ShoppingTemplate[];
   trips: CompletedTrip[];
   receipts: Receipt[];
+  loyaltyCards: LoyaltyCard[];
   budgetAmount: number;
   userLocation: GeoPoint | null;
   locationMode: 'gps' | 'city' | 'none';
@@ -88,6 +94,7 @@ interface AppState {
   historyItemKey: string | null;
   online: boolean;
   familyUnsub: Unsub | null;
+  lastUiError: string | null;
 
   getCirka: () => ReturnType<typeof computeCirka>;
   getEstimates: (forAllItems?: boolean) => ReturnType<typeof buildStoreEstimates>;
@@ -123,17 +130,43 @@ interface AppState {
     category: Category;
     quantity?: number;
     catalogId?: string;
+    barcode?: string;
   }) => void;
-  rememberCustomItem: (input: { name: string; unit: Unit; category: Category }) => void;
+  addManyByNames: (names: string[]) => number;
+  rememberCustomItem: (input: {
+    name: string;
+    unit: Unit;
+    category: Category;
+    barcode?: string;
+  }) => void;
   renameRememberedItem: (id: string, name: string) => void;
   deleteRememberedItem: (id: string) => void;
+  setItemBarcode: (itemId: string, barcode: string) => void;
+  findByBarcode: (barcode: string) => {
+    listItem?: ListItem;
+    remembered?: RememberedItem;
+    archiveName?: string;
+  };
   changeQuantity: (id: string, delta: number) => void;
   removeListItem: (id: string) => void;
+  setZoneOrder: (order: Category[]) => void;
+  moveZone: (category: Category, direction: -1 | 1) => void;
 
   onToggleCheck: (id: string) => void;
   openPriceEntry: (itemId: string | null) => void;
-  confirmToCart: (itemId: string, unitPrice: number, quantity: number) => Promise<void>;
+  confirmToCart: (
+    itemId: string,
+    unitPrice: number,
+    quantity: number,
+    opts?: {
+      isPromo?: boolean;
+      isExtraordinary?: boolean;
+      packSize?: number;
+      unit?: Unit;
+    },
+  ) => Promise<void>;
   finishShopping: () => void;
+  addAllFromReceipt: (receiptId: string) => number;
 
   saveReceipt: (input: {
     storeId: string;
@@ -144,7 +177,14 @@ interface AppState {
     imageDataUrl?: string;
     source: Receipt['source'];
     note?: string;
+    isExtraordinary?: boolean;
   }) => Promise<void>;
+  setReceiptExtraordinary: (receiptId: string, value: boolean) => void;
+
+  addLoyaltyCard: (input: Omit<LoyaltyCard, 'id' | 'createdAt'>) => void;
+  deleteLoyaltyCard: (id: string) => void;
+  setKeepScreenOn: (value: boolean) => void;
+  setUiError: (message: string | null) => void;
 
   deleteReceipt: (receiptId: string) => Promise<void>;
   updateReceiptItem: (
@@ -191,6 +231,7 @@ const defaultSettings: AppSettings = {
   groqApiKey: '',
   firebaseConfigured: isFirebaseConfigured(),
   useMockData: !isFirebaseConfigured(),
+  keepScreenOn: false,
 };
 
 function normalizeSettings(raw?: Partial<AppSettings>): AppSettings {
@@ -200,6 +241,7 @@ function normalizeSettings(raw?: Partial<AppSettings>): AppSettings {
     aiProvider: (raw?.aiProvider as AiProvider) || 'auto',
     geminiApiKey: raw?.geminiApiKey ?? '',
     groqApiKey: raw?.groqApiKey ?? '',
+    keepScreenOn: raw?.keepScreenOn ?? false,
   };
 }
 
@@ -211,6 +253,7 @@ function emptyList(code?: string): ShoppingList {
     shareCode,
     items: [],
     selectedStoreIds: [],
+    zoneOrder: [...DEFAULT_ZONE_ORDER],
     updatedAt: new Date().toISOString(),
   };
 }
@@ -247,6 +290,7 @@ export const useAppStore = create<AppState>()(
       templates: [],
       trips: [],
       receipts: [],
+      loyaltyCards: [],
       budgetAmount: 400,
       userLocation: cityFallbackLocation('Sarajevo'),
       locationMode: 'city',
@@ -256,6 +300,7 @@ export const useAppStore = create<AppState>()(
       historyItemKey: null,
       online: typeof navigator !== 'undefined' ? navigator.onLine : true,
       familyUnsub: null,
+      lastUiError: null,
 
       familyCode: () => get().user?.familyCode || get().list.shareCode,
 
@@ -284,18 +329,49 @@ export const useAppStore = create<AppState>()(
 
       getMonthSpend: () => {
         const key = monthKey();
+        const extraordinaryReceiptIds = new Set(
+          get()
+            .receipts.filter((r) => r.isExtraordinary)
+            .map((r) => r.id),
+        );
+        const cartExtraordinary = get()
+          .archive.filter(
+            (a) =>
+              a.recordedAt.startsWith(key) &&
+              a.isExtraordinary &&
+              a.source === 'cart',
+          )
+          .reduce((s, a) => s + a.lineTotal, 0);
+
         const fromTrips = get()
-          .trips.filter((t) => t.date.startsWith(key))
+          .trips.filter(
+            (t) =>
+              t.date.startsWith(key) &&
+              !(t.receiptId && extraordinaryReceiptIds.has(t.receiptId)),
+          )
           .reduce((s, t) => s + t.total, 0);
+
         const tripReceiptIds = new Set(
           get()
             .trips.filter((t) => t.date.startsWith(key) && t.receiptId)
             .map((t) => t.receiptId),
         );
+
         const fromReceipts = get()
-          .receipts.filter((r) => r.date.startsWith(key) && !tripReceiptIds.has(r.id))
-          .reduce((s, r) => s + r.total, 0);
-        return fromTrips + fromReceipts;
+          .receipts.filter(
+            (r) =>
+              r.date.startsWith(key) &&
+              !tripReceiptIds.has(r.id) &&
+              !r.isExtraordinary,
+          )
+          .reduce((s, r) => {
+            const excluded = r.items
+              .filter((i) => i.isExtraordinary)
+              .reduce((x, i) => x + i.lineTotal, 0);
+            return s + Math.max(0, r.total - excluded);
+          }, 0);
+
+        return Math.max(0, fromTrips + fromReceipts - cartExtraordinary);
       },
 
       getArchiveForItem: (itemKey) =>
@@ -317,6 +393,9 @@ export const useAppStore = create<AppState>()(
               : 'local',
         }),
       clearAuthError: () => set({ authError: null }),
+      setUiError: (message) => set({ lastUiError: message }),
+      setKeepScreenOn: (value) =>
+        set((s) => ({ settings: normalizeSettings({ ...s.settings, keepScreenOn: value }) })),
 
       loginEmail: async (email, password) => {
         set({ authError: null });
@@ -375,6 +454,7 @@ export const useAppStore = create<AppState>()(
           aliases: [],
           templates: [],
           remembered: [],
+          loyaltyCards: [],
         });
       },
 
@@ -502,6 +582,10 @@ export const useAppStore = create<AppState>()(
       },
 
       addFromSuggestion: (input) => {
+        const exists = get().list.items.some(
+          (i) => normalizeItemKey(i.name) === normalizeItemKey(input.name) && !i.checked,
+        );
+        if (exists) return;
         const item: ListItem = {
           id: uid('item'),
           name: input.name,
@@ -511,6 +595,7 @@ export const useAppStore = create<AppState>()(
           category: input.category,
           checked: false,
           catalogId: input.catalogId,
+          barcode: input.barcode,
         };
         const updated = {
           ...get().list,
@@ -521,6 +606,29 @@ export const useAppStore = create<AppState>()(
         void syncList(get, updated);
       },
 
+      addManyByNames: (names) => {
+        let added = 0;
+        for (const raw of names) {
+          const name = raw.trim();
+          if (!name) continue;
+          const mem = get().remembered.find(
+            (r) => normalizeItemKey(r.name) === normalizeItemKey(name),
+          );
+          const arch = get().archive.find(
+            (a) => normalizeItemKey(a.itemName) === normalizeItemKey(name),
+          );
+          const before = get().list.items.length;
+          get().addFromSuggestion({
+            name: mem?.name ?? arch?.itemName ?? name,
+            unit: mem?.unit ?? arch?.unit ?? 'kom',
+            category: mem?.category ?? arch?.category ?? 'ostalo',
+            barcode: mem?.barcode,
+          });
+          if (get().list.items.length > before) added += 1;
+        }
+        return added;
+      },
+
       rememberCustomItem: (input) => {
         const remembered: RememberedItem = {
           id: uid('mem'),
@@ -529,15 +637,78 @@ export const useAppStore = create<AppState>()(
           category: input.category,
           keywords: [normalizeItemKey(input.name)],
           createdAt: new Date().toISOString(),
+          barcode: input.barcode,
         };
         set((s) => ({ remembered: [remembered, ...s.remembered] }));
         get().addFromSuggestion({
           name: remembered.name,
           unit: remembered.unit,
           category: remembered.category,
+          barcode: remembered.barcode,
         });
         const code = codeOf(get);
         if (code && get().user?.provider !== 'demo') void pushRememberedItem(code, remembered);
+      },
+
+      setItemBarcode: (itemId, barcode) => {
+        const codeVal = barcode.trim();
+        const updated = {
+          ...get().list,
+          items: get().list.items.map((it) =>
+            it.id === itemId ? { ...it, barcode: codeVal } : it,
+          ),
+          updatedAt: new Date().toISOString(),
+        };
+        set({ list: updated });
+        const item = updated.items.find((i) => i.id === itemId);
+        if (item) {
+          const mem = get().remembered.find(
+            (r) => normalizeItemKey(r.name) === normalizeItemKey(item.name),
+          );
+          if (mem) {
+            const next = { ...mem, barcode: codeVal };
+            set((s) => ({
+              remembered: s.remembered.map((r) => (r.id === mem.id ? next : r)),
+            }));
+            const code = codeOf(get);
+            if (code && get().user?.provider !== 'demo') void pushRememberedItem(code, next);
+          }
+        }
+        void syncList(get, updated);
+      },
+
+      findByBarcode: (barcode) => {
+        const code = barcode.trim();
+        const listItem = get().list.items.find((i) => i.barcode === code);
+        const remembered = get().remembered.find((r) => r.barcode === code);
+        const arch = get().archive.find((a) => a.barcode === code);
+        return {
+          listItem,
+          remembered,
+          archiveName: arch?.itemName,
+        };
+      },
+
+      setZoneOrder: (order) => {
+        const updated = {
+          ...get().list,
+          zoneOrder: order,
+          updatedAt: new Date().toISOString(),
+        };
+        set({ list: updated });
+        void syncList(get, updated);
+      },
+
+      moveZone: (category, direction) => {
+        const order = [...(get().list.zoneOrder ?? DEFAULT_ZONE_ORDER)];
+        const idx = order.indexOf(category);
+        if (idx < 0) return;
+        const next = idx + direction;
+        if (next < 0 || next >= order.length) return;
+        const tmp = order[idx]!;
+        order[idx] = order[next]!;
+        order[next] = tmp;
+        get().setZoneOrder(order);
       },
 
       renameRememberedItem: (id, name) => {
@@ -613,20 +784,22 @@ export const useAppStore = create<AppState>()(
 
       openPriceEntry: (itemId) => set({ pendingPriceItemId: itemId }),
 
-      confirmToCart: async (itemId, unitPrice, quantity) => {
+      confirmToCart: async (itemId, unitPrice, quantity, opts) => {
         const { list, stores, archive } = get();
         const store = stores.find((s) => s.id === list.activeStoreId);
         const item = list.items.find((i) => i.id === itemId);
         if (!item || !store) return;
 
+        const unit = opts?.unit ?? item.unit;
         const delta = priceDeltaVsLast(archive, item.name, store.id, unitPrice);
         const lineTotal = Math.round(unitPrice * quantity * 100) / 100;
+        const norm = normalizedUnitPrice(unitPrice, quantity, unit);
         const entry: ArchiveEntry = {
           id: uid('arch'),
           itemKey: normalizeItemKey(item.name),
           itemName: item.name,
           variant: item.variant,
-          unit: item.unit,
+          unit,
           category: item.category,
           unitPrice,
           quantity,
@@ -636,6 +809,11 @@ export const useAppStore = create<AppState>()(
           recordedAt: new Date().toISOString(),
           listId: list.id,
           source: 'cart',
+          isPromo: opts?.isPromo,
+          isExtraordinary: opts?.isExtraordinary,
+          packSize: opts?.packSize,
+          normalizedUnitPrice: norm ?? undefined,
+          barcode: item.barcode,
         };
 
         const updated: ShoppingList = {
@@ -646,9 +824,12 @@ export const useAppStore = create<AppState>()(
                   ...it,
                   checked: true,
                   quantity,
+                  unit,
                   unitPrice,
                   lineTotal,
                   priceDelta: delta ?? undefined,
+                  isPromo: opts?.isPromo,
+                  isExtraordinary: opts?.isExtraordinary,
                 }
               : it,
           ),
@@ -669,6 +850,23 @@ export const useAppStore = create<AppState>()(
             if (get().online && isFirebaseConfigured()) set({ syncStatus: 'online' });
           });
         }
+      },
+
+      addAllFromReceipt: (receiptId) => {
+        const receipt = get().receipts.find((r) => r.id === receiptId);
+        if (!receipt) return 0;
+        let added = 0;
+        for (const it of receipt.items) {
+          const before = get().list.items.length;
+          get().addFromSuggestion({
+            name: it.name,
+            unit: it.unit,
+            category: it.category,
+            quantity: it.quantity,
+          });
+          if (get().list.items.length > before) added += 1;
+        }
+        return added;
       },
 
       finishShopping: () => {
@@ -717,6 +915,7 @@ export const useAppStore = create<AppState>()(
           note: input.note,
           createdAt: new Date().toISOString(),
           source: input.source,
+          isExtraordinary: input.isExtraordinary,
         };
 
         const newArchive: ArchiveEntry[] = receipt.items.map((it) => ({
@@ -734,6 +933,10 @@ export const useAppStore = create<AppState>()(
           listId: get().list.id,
           source: 'receipt' as const,
           receiptId: receipt.id,
+          isPromo: it.isPromo,
+          isExtraordinary: input.isExtraordinary || it.isExtraordinary,
+          normalizedUnitPrice:
+            normalizedUnitPrice(it.unitPrice, it.quantity, it.unit) ?? undefined,
         }));
 
         const trip: CompletedTrip = {
@@ -1107,6 +1310,40 @@ export const useAppStore = create<AppState>()(
         if (code && get().user?.provider !== 'demo') void deleteTemplateDoc(code, templateId);
       },
 
+      setReceiptExtraordinary: (receiptId, value) => {
+        const receipt = get().receipts.find((r) => r.id === receiptId);
+        if (!receipt) return;
+        const updated = { ...receipt, isExtraordinary: value };
+        set((s) => ({
+          receipts: s.receipts.map((r) => (r.id === receiptId ? updated : r)),
+          archive: s.archive.map((a) =>
+            a.receiptId === receiptId ? { ...a, isExtraordinary: value } : a,
+          ),
+        }));
+        const code = codeOf(get);
+        if (code && get().user?.provider !== 'demo') void pushReceipt(code, updated);
+      },
+
+      addLoyaltyCard: (input) => {
+        const card: LoyaltyCard = {
+          id: uid('loy'),
+          name: input.name.trim(),
+          storeBrand: input.storeBrand?.trim(),
+          cardNumber: input.cardNumber.trim(),
+          imageDataUrl: input.imageDataUrl,
+          createdAt: new Date().toISOString(),
+        };
+        set((s) => ({ loyaltyCards: [card, ...s.loyaltyCards] }));
+        const code = codeOf(get);
+        if (code && get().user?.provider !== 'demo') void pushLoyaltyCard(code, card);
+      },
+
+      deleteLoyaltyCard: (id) => {
+        set((s) => ({ loyaltyCards: s.loyaltyCards.filter((c) => c.id !== id) }));
+        const code = codeOf(get);
+        if (code && get().user?.provider !== 'demo') void deleteLoyaltyCardDoc(code, id);
+      },
+
       setBudget: (amount) => {
         set({ budgetAmount: amount });
         const code = codeOf(get);
@@ -1162,6 +1399,7 @@ export const useAppStore = create<AppState>()(
             if (patch.aliases) next.aliases = patch.aliases as ItemAlias[];
             if (patch.templates) next.templates = patch.templates as ShoppingTemplate[];
             if (patch.trips) next.trips = patch.trips as CompletedTrip[];
+            if (patch.loyalty) next.loyaltyCards = patch.loyalty as LoyaltyCard[];
             return next;
           });
         });
@@ -1245,19 +1483,28 @@ export const useAppStore = create<AppState>()(
         templates: s.templates,
         trips: s.trips,
         receipts: s.receipts,
+        loyaltyCards: s.loyaltyCards,
         budgetAmount: s.budgetAmount,
         user: s.user?.provider === 'demo' ? s.user : null,
       }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<AppState>;
+        const list = p.list
+          ? {
+              ...p.list,
+              zoneOrder: p.list.zoneOrder ?? [...DEFAULT_ZONE_ORDER],
+            }
+          : current.list;
         return {
           ...current,
           ...p,
+          list,
           authReady: false,
           familyUnsub: null,
           settings: normalizeSettings(p.settings ?? current.settings),
           aliases: p.aliases ?? [],
           templates: p.templates ?? [],
+          loyaltyCards: p.loyaltyCards ?? [],
         };
       },
     },

@@ -161,6 +161,13 @@ export function SettingsPage() {
       </section>
 
       <section className="card stack">
+        <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Kartice lojalnosti</h2>
+        <p className="muted" style={{ margin: 0 }}>
+          Kartice otvaraš i prikazuješ sa Spiska dugmetom „Kartice” (barkod preko ekrana na kasi).
+        </p>
+      </section>
+
+      <section className="card stack">
         <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Izvoz podataka (Backup)</h2>
         <p className="muted" style={{ margin: 0 }}>
           Preuzmi sve račune i cijene na uređaj (CSV ili JSON).
