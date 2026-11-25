@@ -1,14 +1,15 @@
 import { useEffect } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { formatKm } from '../../lib/format';
 import { useAppStore } from '../../store/useAppStore';
-import { CartHeader } from './CartHeader';
+import { CirkaStrip } from './CirkaStrip';
 import { IconBudget, IconHistory, IconList, IconSettings, IconStore } from './Icons';
 import { CartConfirmModal } from '../list/CartConfirmModal';
 
 const links = [
   { to: '/', label: 'Spisak', icon: <IconList />, end: true },
   { to: '/radnje', label: 'Radnje', icon: <IconStore /> },
-  { to: '/historija', label: 'Historija', icon: <IconHistory /> },
+  { to: '/arhiva', label: 'Arhiva', icon: <IconHistory /> },
   { to: '/budzet', label: 'Budžet', icon: <IconBudget /> },
 ];
 
@@ -22,7 +23,11 @@ export function AppShell() {
   const theme = useAppStore((s) => s.settings.theme);
   const user = useAppStore((s) => s.user);
   const bootstrapFirebase = useAppStore((s) => s.bootstrapFirebase);
+  const setOnline = useAppStore((s) => s.setOnline);
+  const getCirka = useAppStore((s) => s.getCirka);
+  const budgetAmount = useAppStore((s) => s.budgetAmount);
   const navigate = useNavigate();
+  const cirka = getCirka();
 
   useEffect(() => {
     applyTheme(theme);
@@ -31,6 +36,22 @@ export function AppShell() {
   useEffect(() => {
     void bootstrapFirebase();
   }, [bootstrapFirebase]);
+
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    setOnline(navigator.onLine);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, [setOnline]);
+
+  const pct = Math.min(100, cirka.budgetPct);
+  const progressClass =
+    pct >= 100 ? 'progress over' : pct >= 80 ? 'progress warn' : 'progress';
 
   return (
     <div className="app-shell">
@@ -54,7 +75,7 @@ export function AppShell() {
               </button>
             </div>
           </div>
-          <CartHeader />
+          <CirkaStrip />
         </div>
       </header>
 
@@ -70,6 +91,20 @@ export function AppShell() {
             {l.label}
           </NavLink>
         ))}
+        <div className="budget-card-side">
+          <div className="muted" style={{ fontSize: '0.75rem', fontWeight: 700 }}>
+            MJESEČNI BUDŽET
+          </div>
+          <div style={{ fontFamily: 'var(--font-brand)', fontWeight: 800, fontSize: '1.15rem' }}>
+            {formatKm(cirka.budgetRemaining)} preostalo
+          </div>
+          <div className="muted" style={{ fontSize: '0.8rem', margin: '0.25rem 0 0.45rem' }}>
+            od {formatKm(budgetAmount)} · {pct.toFixed(0)}%
+          </div>
+          <div className={progressClass}>
+            <span style={{ width: `${pct}%` }} />
+          </div>
+        </div>
       </nav>
 
       <main className="main">

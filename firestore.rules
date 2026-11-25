@@ -10,5 +10,8 @@ service cloud.firestore {
     match /catalogRemembered/{id} {
       allow read, write: if true;
     }
+    match /receipts/{id} {
+      allow read, write: if true;
+    }
   }
 }

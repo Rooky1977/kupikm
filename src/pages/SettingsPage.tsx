@@ -27,13 +27,13 @@ export function SettingsPage() {
         <div>
           <h1>Podešavanja</h1>
           <p>
-            {settings.useMockData ? 'Demo / lokalni režim' : 'Firebase povezan'} · sync: {syncStatus}
+            {settings.useMockData ? 'Lokalni / demo režim' : 'Firebase povezan'} · status: {syncStatus}
           </p>
         </div>
       </div>
 
       <section className="card stack">
-        <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Tema</h2>
+        <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Tema</h2>
         <div className="chip-row">
           {(
             [
@@ -55,7 +55,7 @@ export function SettingsPage() {
       </section>
 
       <section className="card stack">
-        <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Nalog</h2>
+        <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Nalog</h2>
         {user ? (
           <>
             <p style={{ margin: 0 }}>
@@ -75,13 +75,7 @@ export function SettingsPage() {
             className="form-grid"
             onSubmit={(e: FormEvent) => {
               e.preventDefault();
-              void loginEmail(email, password).then(() =>
-                setMsg(
-                  settings.firebaseConfigured
-                    ? 'Prijava uspješna.'
-                    : 'Demo prijava (Firebase ključevi nisu u .env).',
-                ),
-              );
+              void loginEmail(email, password).then(() => setMsg('Prijava uspješna / demo.'));
             }}
           >
             <label className="label">
@@ -106,7 +100,7 @@ export function SettingsPage() {
       </section>
 
       <section className="card stack">
-        <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Dijeljeni spisak (uživo)</h2>
+        <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Dijeljeni spisak (uživo)</h2>
         <p className="muted" style={{ margin: 0 }}>
           Trenutni kod: <strong>{list.shareCode}</strong>
         </p>
@@ -127,14 +121,13 @@ export function SettingsPage() {
             Pridruži se
           </button>
         </form>
-        <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-          Sa Firebase ključevima, oba uređaja sinkronizuju spisak preko Firestore onSnapshot. Offline
-          keš radi i u marketu sa slabim signalom.
-        </p>
       </section>
 
       <section className="card stack">
-        <h2 style={{ margin: 0, fontSize: '1.1rem' }}>OpenAI ključ (opciono)</h2>
+        <h2 style={{ margin: 0, fontSize: '1.05rem' }}>AI ključ za parsiranje računa</h2>
+        <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+          OpenAI-kompatibilan ključ omogućava automatsko čitanje slike ili teksta računa u Arhivi.
+        </p>
         <form
           className="form-grid"
           onSubmit={(e) => {

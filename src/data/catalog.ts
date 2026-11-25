@@ -11,8 +11,19 @@ function v(
   return { id, label, unit, defaultQty, keywords, category };
 }
 
-/** Lokalni katalog najčešćih namirnica sa pakovanjima/varijantama. */
 export const CATALOG: CatalogProduct[] = [
+  {
+    id: 'ulje',
+    name: 'Ulje',
+    category: 'ostalo',
+    variants: [
+      v('ulje-floriol-1l', 'Ulje Floriol 1L', 'l', 'ostalo', ['ulje', 'floriol', '1l', 'suncokret']),
+      v('ulje-suncokret-1l', 'Ulje suncokretovo 1L', 'l', 'ostalo', ['ulje', 'suncokretovo', 'suncokret', '1l']),
+      v('ulje-maslinovo-1l', 'Ulje maslinovo 1L', 'l', 'ostalo', ['ulje', 'maslinovo', 'olive', '1l']),
+      v('ulje-suncokret-2l', 'Ulje suncokretovo 2L', 'l', 'ostalo', ['ulje', 'suncokretovo', '2l'], 2),
+      v('ulje-floriol-2l', 'Ulje Floriol 2L', 'l', 'ostalo', ['ulje', 'floriol', '2l'], 2),
+    ],
+  },
   {
     id: 'mlijeko',
     name: 'Mlijeko',
@@ -33,7 +44,6 @@ export const CATALOG: CatalogProduct[] = [
       v('jogurt-180', 'Jogurt 180g', 'kom', 'mlijecno', ['jogurt', '180']),
       v('jogurt-500', 'Jogurt 500g', 'kom', 'mlijecno', ['jogurt', '500']),
       v('jogurt-1kg', 'Jogurt 1kg', 'kg', 'mlijecno', ['jogurt', '1kg']),
-      v('jogurt-casica', 'Jogurt čašica', 'kom', 'mlijecno', ['jogurt', 'casica', 'čašica']),
     ],
   },
   {
@@ -57,34 +67,14 @@ export const CATALOG: CatalogProduct[] = [
     ],
   },
   {
-    id: 'sir',
-    name: 'Sir',
-    category: 'mlijecno',
-    variants: [
-      v('sir-trapist', 'Sir trapist', 'kg', 'mlijecno', ['sir', 'trapist']),
-      v('sir-feta', 'Sir feta', 'kg', 'mlijecno', ['sir', 'feta']),
-      v('sir-gauda', 'Sir gauda', 'kg', 'mlijecno', ['sir', 'gauda']),
-    ],
-  },
-  {
     id: 'hljeb',
-    name: 'Hljeb / peciva',
+    name: 'Hljeb / pecivo',
     category: 'pekara',
     variants: [
-      v('hljeb-bijeli', 'Hljeb bijeli', 'kom', 'pekara', ['hljeb', 'hleb', 'bijeli']),
-      v('hljeb-integralni', 'Hljeb integralni', 'kom', 'pekara', ['hljeb', 'hleb', 'integralni']),
-      v('somun', 'Somun', 'kom', 'pekara', ['somun', 'hljeb']),
-      v('pecivo', 'Pecivo / kifla', 'kom', 'pekara', ['pecivo', 'kifla', 'hljeb']),
-      v('lepinja', 'Lepinja', 'kom', 'pekara', ['lepinja', 'hljeb']),
-    ],
-  },
-  {
-    id: 'ulje',
-    name: 'Ulje',
-    category: 'ostalo',
-    variants: [
-      v('ulje-1l', 'Suncokretovo ulje 1L', 'l', 'ostalo', ['ulje', 'suncokretovo', '1l']),
-      v('ulje-maslinovo', 'Maslinovo ulje 0.5L', 'l', 'ostalo', ['ulje', 'maslinovo'], 0.5),
+      v('hljeb-bijeli', 'Hljeb bijeli', 'kom', 'pekara', ['hljeb', 'hleb', 'bijeli', 'pecivo']),
+      v('hljeb-polubijeli', 'Hljeb polubijeli / crni', 'kom', 'pekara', ['hljeb', 'hleb', 'polubijeli', 'crni', 'pecivo']),
+      v('somun-lepinja', 'Somun / lepinja', 'kom', 'pekara', ['somun', 'lepinja', 'hljeb', 'pecivo']),
+      v('kifle-pecivo', 'Kifle / pecivo', 'kom', 'pekara', ['kifle', 'pecivo', 'kifla', 'hljeb']),
     ],
   },
   {
@@ -93,7 +83,6 @@ export const CATALOG: CatalogProduct[] = [
     category: 'ostalo',
     variants: [
       v('secer-1kg', 'Šećer 1kg', 'kg', 'ostalo', ['secer', 'šećer', '1kg']),
-      v('secer-kristal', 'Šećer kristal 1kg', 'kg', 'ostalo', ['secer', 'kristal']),
     ],
   },
   {
@@ -117,14 +106,13 @@ export const CATALOG: CatalogProduct[] = [
   },
   {
     id: 'meso',
-    name: 'Meso / piletina',
+    name: 'Meso',
     category: 'meso',
     variants: [
       v('pile-file', 'Pileći file', 'kg', 'meso', ['pile', 'piletina', 'file', 'meso']),
       v('pile-batak', 'Pileći batak', 'kg', 'meso', ['pile', 'batak', 'meso']),
-      v('junece', 'Juneće meso', 'kg', 'meso', ['junece', 'govedina', 'meso']),
+      v('junece', 'Juneće meso', 'kg', 'meso', ['junece', 'junetina', 'govedina', 'meso']),
       v('mljeveno', 'Mljeveno meso', 'kg', 'meso', ['mljeveno', 'meso']),
-      v('virsle', 'Virsle', 'pak', 'meso', ['virsle', 'meso']),
     ],
   },
   {
@@ -134,12 +122,10 @@ export const CATALOG: CatalogProduct[] = [
     variants: [
       v('banane', 'Banane', 'kg', 'voce-povrce', ['banane', 'voce']),
       v('jabuke', 'Jabuke', 'kg', 'voce-povrce', ['jabuke', 'voce']),
-      v('pomorandze', 'Pomorandže', 'kg', 'voce-povrce', ['pomorandze', 'narandze', 'voce']),
       v('krompir', 'Krompir', 'kg', 'voce-povrce', ['krompir', 'povrce']),
       v('luk', 'Crveni luk', 'kg', 'voce-povrce', ['luk', 'povrce']),
       v('paradajz', 'Paradajz', 'kg', 'voce-povrce', ['paradajz', 'povrce']),
       v('krastavac', 'Krastavac', 'kg', 'voce-povrce', ['krastavac', 'povrce']),
-      v('mrkva', 'Mrkva', 'kg', 'voce-povrce', ['mrkva', 'povrce']),
     ],
   },
   {
@@ -148,32 +134,21 @@ export const CATALOG: CatalogProduct[] = [
     category: 'pice',
     variants: [
       v('voda-15l', 'Voda 1.5L', 'kom', 'pice', ['voda', '1.5']),
-      v('voda-05l', 'Voda 0.5L', 'kom', 'pice', ['voda', '0.5']),
       v('voda-5l', 'Voda 5L', 'kom', 'pice', ['voda', '5l', 'galon']),
       v('voda-gazirana', 'Voda gazirana 1.5L', 'kom', 'pice', ['voda', 'gazirana']),
     ],
   },
   {
-    id: 'sokovi',
-    name: 'Sokovi / napici',
-    category: 'pice',
-    variants: [
-      v('sok-1l', 'Sok 1L', 'l', 'pice', ['sok', '1l']),
-      v('cola', 'Gazirani sok 1.5L', 'kom', 'pice', ['cola', 'gazirani', 'sok']),
-      v('caj', 'Čaj (kutija)', 'pak', 'pice', ['caj', 'čaj']),
-    ],
-  },
-  {
-    id: 'hemija',
-    name: 'Hemija / higijena',
+    id: 'higijena',
+    name: 'Higijena / dm',
     category: 'hemija',
     variants: [
       v('deterdzent', 'Deterdžent za veš', 'kom', 'hemija', ['deterdzent', 'ves', 'veš']),
-      v('omeksivac', 'Omekšivač', 'kom', 'hemija', ['omeksivac', 'omekšivač']),
-      v('tecnost-sudje', 'Tečnost za suđe', 'kom', 'hemija', ['sudje', 'suđe', 'tecnost']),
       v('pasta-zubi', 'Pasta za zube', 'kom', 'hemija', ['pasta', 'zubi']),
-      v('sapun', 'Sapun', 'kom', 'hemija', ['sapun']),
+      v('sampon', 'Šampon', 'kom', 'hemija', ['sampon', 'šampon']),
+      v('gel-tusiranje', 'Gel za tuširanje', 'kom', 'hemija', ['gel', 'tusiranje', 'tuširanje']),
       v('wc-papir', 'Toalet papir', 'pak', 'hemija', ['toalet', 'papir', 'wc']),
+      v('tecnost-sudje', 'Tečnost za suđe', 'kom', 'hemija', ['sudje', 'suđe', 'tecnost']),
     ],
   },
 ];

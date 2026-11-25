@@ -9,19 +9,23 @@ export function BudgetPage() {
   const budgetAmount = useAppStore((s) => s.budgetAmount);
   const setBudget = useAppStore((s) => s.setBudget);
   const trips = useAppStore((s) => s.trips);
+  const receipts = useAppStore((s) => s.receipts);
   const getMonthSpend = useAppStore((s) => s.getMonthSpend);
   const archive = useAppStore((s) => s.archive);
 
   const [draft, setDraft] = useState(String(budgetAmount));
   const spent = getMonthSpend();
   const remaining = budgetAmount - spent;
-  const pct = budgetAmount > 0 ? Math.min(100, (spent / budgetAmount) * 100) : 0;
-  const over = spent > budgetAmount;
+  const pct = budgetAmount > 0 ? (spent / budgetAmount) * 100 : 0;
+  const over = pct >= 100;
+  const warn = pct >= 80;
   const key = monthKey();
   const monthTrips = trips.filter((t) => t.date.startsWith(key));
 
   const categoryStats: Partial<Record<Category, number>> = {};
-  for (const a of archive.filter((e) => e.recordedAt.startsWith(key) && e.source === 'cart')) {
+  for (const a of archive.filter(
+    (e) => e.recordedAt.startsWith(key) && (e.source === 'cart' || e.source === 'receipt'),
+  )) {
     categoryStats[a.category] = (categoryStats[a.category] ?? 0) + a.lineTotal;
   }
   const catRows = Object.entries(categoryStats).sort((a, b) => b[1] - a[1]);
@@ -29,6 +33,11 @@ export function BudgetPage() {
   const storeStats: Record<string, number> = {};
   for (const t of monthTrips) {
     storeStats[t.storeName] = (storeStats[t.storeName] ?? 0) + t.total;
+  }
+  for (const r of receipts.filter((x) => x.date.startsWith(key))) {
+    if (!monthTrips.some((t) => t.receiptId === r.id)) {
+      storeStats[r.storeName] = (storeStats[r.storeName] ?? 0) + r.total;
+    }
   }
   const storeRows = Object.entries(storeStats).sort((a, b) => b[1] - a[1]);
 
@@ -39,6 +48,8 @@ export function BudgetPage() {
     setBudget(value);
   };
 
+  const progressClass = over ? 'progress over' : warn ? 'progress warn' : 'progress';
+
   return (
     <div>
       <div className="page-header">
@@ -47,6 +58,23 @@ export function BudgetPage() {
           <p>{formatMonthLabel(key)}</p>
         </div>
       </div>
+
+      {(warn || over) && (
+        <div
+          className="card"
+          style={{
+            marginBottom: '0.85rem',
+            borderColor: over ? 'var(--danger)' : 'var(--warning)',
+            background: over ? '#fef2f2' : '#fffbeb',
+          }}
+        >
+          <strong>
+            {over
+              ? 'Prešao si mjesečni budžet!'
+              : 'Pažnja: potrošnja je prešla 80% budžeta.'}
+          </strong>
+        </div>
+      )}
 
       <div className="stat-grid" style={{ marginBottom: '0.85rem' }}>
         <div className="stat">
@@ -63,12 +91,12 @@ export function BudgetPage() {
         </div>
         <div className="stat">
           <span className="muted">Iskorištenost</span>
-          <strong>{pct.toFixed(0)}%</strong>
+          <strong>{Math.min(999, pct).toFixed(0)}%</strong>
         </div>
       </div>
 
       <div className="card stack">
-        <div className={`progress${over ? ' over' : ''}`}>
+        <div className={progressClass}>
           <span style={{ width: `${Math.min(100, pct)}%` }} />
         </div>
         <form className="form-row-2" onSubmit={onSave}>
@@ -91,7 +119,7 @@ export function BudgetPage() {
 
       <div className="desktop-layout" style={{ marginTop: '0.85rem' }}>
         <section className="card stack">
-          <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Po kategorijama</h2>
+          <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Po kategorijama</h2>
           {catRows.length === 0 && <p className="muted">Nema podataka ovaj mjesec.</p>}
           {catRows.map(([cat, value]) => (
             <div key={cat} className="row" style={{ justifyContent: 'space-between' }}>
@@ -101,7 +129,7 @@ export function BudgetPage() {
           ))}
         </section>
         <section className="card stack">
-          <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Po radnjama</h2>
+          <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Po radnjama</h2>
           {storeRows.length === 0 && <p className="muted">Nema podataka.</p>}
           {storeRows.map(([name, value]) => (
             <div key={name} className="row" style={{ justifyContent: 'space-between' }}>
@@ -113,7 +141,7 @@ export function BudgetPage() {
       </div>
 
       <section className="card" style={{ marginTop: '0.85rem' }}>
-        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Obavljene kupovine</h2>
+        <h2 style={{ marginTop: 0, fontSize: '1.05rem' }}>Obavljene kupovine</h2>
         <div className="stack">
           {monthTrips.map((t) => (
             <div key={t.id} style={{ padding: '0.55rem 0', borderBottom: '1px solid var(--border)' }}>
@@ -123,6 +151,7 @@ export function BudgetPage() {
               </div>
               <div className="muted" style={{ fontSize: '0.85rem' }}>
                 {format(new Date(t.date), 'd. MMMM yyyy.', { locale: bs })} · {t.itemCount} artikala
+                {t.receiptId ? ' · iz računa' : ''}
               </div>
             </div>
           ))}

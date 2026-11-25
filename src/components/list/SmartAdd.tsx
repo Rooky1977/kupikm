@@ -1,5 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { searchSuggestions } from '../../lib/catalogSearch';
+import { formatKm } from '../../lib/format';
 import { useAppStore } from '../../store/useAppStore';
 import { CATEGORY_LABELS, UNIT_LABELS, type Category, type Unit } from '../../types';
 
@@ -7,6 +8,7 @@ export function SmartAdd() {
   const remembered = useAppStore((s) => s.remembered);
   const addFromSuggestion = useAppStore((s) => s.addFromSuggestion);
   const rememberCustomItem = useAppStore((s) => s.rememberCustomItem);
+  const getLastPrice = useAppStore((s) => s.getLastPrice);
 
   const [query, setQuery] = useState('');
   const [showCustom, setShowCustom] = useState(false);
@@ -49,23 +51,31 @@ export function SmartAdd() {
             setQuery(e.target.value);
             setShowCustom(false);
           }}
-          placeholder="npr. mlijeko, jaja, ulje…"
+          placeholder="npr. ulje, mlijeko, jaja…"
           autoComplete="off"
         />
       </label>
 
       {query.trim().length > 0 && (
         <div className="suggest-panel">
-          {suggestions.map((s) => (
-            <button
-              key={`${s.source}-${s.id}`}
-              type="button"
-              className="chip"
-              onClick={() => addSuggestion(s.label, s.unit, s.category, s.defaultQty, s.id)}
-            >
-              {s.label}
-            </button>
-          ))}
+          {suggestions.map((s) => {
+            const last = getLastPrice(s.label);
+            return (
+              <button
+                key={`${s.source}-${s.id}`}
+                type="button"
+                className="chip"
+                onClick={() => addSuggestion(s.label, s.unit, s.category, s.defaultQty, s.id)}
+              >
+                {s.label}
+                {last && (
+                  <small>
+                    {formatKm(last.unitPrice)} · {last.storeName}
+                  </small>
+                )}
+              </button>
+            );
+          })}
           <button type="button" className="chip active" onClick={() => setShowCustom(true)}>
             + Novi artikal „{query.trim()}”
           </button>

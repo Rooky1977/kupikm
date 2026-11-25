@@ -2,14 +2,17 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import {
   DEMO_LIST,
+  DEMO_RECEIPTS,
   DEMO_STORES,
   DEMO_TRIPS,
   buildDemoArchive,
 } from '../data/demo';
+import { toReceiptItems } from '../lib/aiParse';
 import {
   initFirebase,
   isFirebaseConfigured,
   pushArchiveEntry,
+  pushReceipt,
   pushRememberedItem,
   pushShoppingList,
   signInWithEmail,
@@ -18,10 +21,10 @@ import {
   subscribeSharedList,
 } from '../lib/firebase';
 import { cityFallbackLocation, requestUserLocation } from '../lib/geolocation';
-import { normalizeItemKey, uid } from '../lib/format';
+import { monthKey, normalizeItemKey, uid } from '../lib/format';
 import {
   buildStoreEstimates,
-  cartTotals,
+  computeCirka,
   getLastPriceInfo,
   priceDeltaVsLast,
 } from '../lib/scoring';
@@ -32,17 +35,16 @@ import type {
   CompletedTrip,
   GeoPoint,
   ListItem,
+  Receipt,
+  ReceiptItem,
   RememberedItem,
   ShoppingList,
   Store,
+  SyncStatus,
   ThemeMode,
   Unit,
   UserProfile,
 } from '../types';
-
-interface PendingPrice {
-  itemId: string;
-}
 
 interface AppState {
   user: UserProfile | null;
@@ -52,16 +54,18 @@ interface AppState {
   archive: ArchiveEntry[];
   remembered: RememberedItem[];
   trips: CompletedTrip[];
+  receipts: Receipt[];
   budgetAmount: number;
   userLocation: GeoPoint | null;
   locationMode: 'gps' | 'city' | 'none';
   locationError: string | null;
-  pendingPrice: PendingPrice | null;
-  syncStatus: 'local' | 'syncing' | 'live' | 'offline';
+  pendingPriceItemId: string | null;
+  syncStatus: SyncStatus;
   historyItemKey: string | null;
+  online: boolean;
 
-  getCart: () => ReturnType<typeof cartTotals>;
-  getEstimates: () => ReturnType<typeof buildStoreEstimates>;
+  getCirka: () => ReturnType<typeof computeCirka>;
+  getEstimates: (forAllItems?: boolean) => ReturnType<typeof buildStoreEstimates>;
   getLastPrice: (itemName: string) => ReturnType<typeof getLastPriceInfo>;
   getMonthSpend: () => number;
   getArchiveForItem: (itemKey: string) => ArchiveEntry[];
@@ -69,6 +73,7 @@ interface AppState {
   setTheme: (theme: ThemeMode) => void;
   setCityFallback: (city: string) => void;
   setOpenAiKey: (key: string) => void;
+  setOnline: (online: boolean) => void;
   loginEmail: (email: string, password: string) => Promise<void>;
   loginGoogle: () => Promise<void>;
   logout: () => Promise<void>;
@@ -77,6 +82,7 @@ interface AppState {
   addStore: (input: Omit<Store, 'id' | 'isCustom' | 'isFavorite'> & { isFavorite?: boolean }) => void;
   toggleFavorite: (storeId: string) => void;
   toggleSelectedStore: (storeId: string) => void;
+  setSelectedStores: (ids: string[]) => void;
   setActiveStore: (storeId: string) => void;
 
   addFromSuggestion: (input: {
@@ -86,20 +92,25 @@ interface AppState {
     quantity?: number;
     catalogId?: string;
   }) => void;
-  rememberCustomItem: (input: {
-    name: string;
-    unit: Unit;
-    category: Category;
-  }) => void;
+  rememberCustomItem: (input: { name: string; unit: Unit; category: Category }) => void;
   changeQuantity: (id: string, delta: number) => void;
-  setQuantity: (id: string, quantity: number) => void;
   removeListItem: (id: string) => void;
 
-  /** Checkbox → otvara unos cijene (ako nije u korpi) ili izbacuje iz korpe */
   onToggleCheck: (id: string) => void;
   openPriceEntry: (itemId: string | null) => void;
   confirmToCart: (itemId: string, unitPrice: number, quantity: number) => Promise<void>;
   finishShopping: () => void;
+
+  saveReceipt: (input: {
+    storeId: string;
+    storeName: string;
+    date: string;
+    items: ReceiptItem[];
+    total: number;
+    imageDataUrl?: string;
+    source: Receipt['source'];
+    note?: string;
+  }) => Promise<void>;
 
   setBudget: (amount: number) => void;
   detectLocation: () => Promise<void>;
@@ -122,7 +133,7 @@ async function syncList(list: ShoppingList) {
   try {
     await pushShoppingList(list);
   } catch {
-    /* offline queue */
+    /* offline */
   }
 }
 
@@ -141,32 +152,53 @@ export const useAppStore = create<AppState>()(
       archive: buildDemoArchive(),
       remembered: [],
       trips: DEMO_TRIPS,
+      receipts: DEMO_RECEIPTS,
       budgetAmount: 400,
       userLocation: cityFallbackLocation('Sarajevo'),
       locationMode: 'city',
       locationError: null,
-      pendingPrice: null,
-      syncStatus: isFirebaseConfigured() ? 'syncing' : 'local',
+      pendingPriceItemId: null,
+      syncStatus: isFirebaseConfigured() ? 'sync' : 'local',
       historyItemKey: null,
+      online: typeof navigator !== 'undefined' ? navigator.onLine : true,
 
-      getCart: () => cartTotals(get().list.items),
+      getCirka: () => {
+        const s = get();
+        return computeCirka(
+          s.list.items,
+          s.list.activeStoreId,
+          s.archive,
+          s.budgetAmount,
+          s.getMonthSpend(),
+        );
+      },
 
-      getEstimates: () => {
-        const { stores, list, archive } = get();
+      getEstimates: (forAllItems = true) => {
+        const { stores, list, archive, userLocation } = get();
         const ids =
           list.selectedStoreIds.length > 0
-            ? list.selectedStoreIds
-            : stores.filter((s) => s.isFavorite).map((s) => s.id);
-        return buildStoreEstimates(stores, ids, list.items.filter((i) => !i.checked), archive);
+            ? list.selectedStoreIds.slice(0, 3)
+            : stores.filter((st) => st.isFavorite).map((st) => st.id).slice(0, 3);
+        const items = forAllItems ? list.items : list.items.filter((i) => !i.checked);
+        return buildStoreEstimates(stores, ids, items, archive, userLocation);
       },
 
       getLastPrice: (itemName) => getLastPriceInfo(get().archive, itemName),
 
       getMonthSpend: () => {
-        const key = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-        return get()
+        const key = monthKey();
+        const fromTrips = get()
           .trips.filter((t) => t.date.startsWith(key))
           .reduce((s, t) => s + t.total, 0);
+        const tripReceiptIds = new Set(
+          get()
+            .trips.filter((t) => t.date.startsWith(key) && t.receiptId)
+            .map((t) => t.receiptId),
+        );
+        const fromReceipts = get()
+          .receipts.filter((r) => r.date.startsWith(key) && !tripReceiptIds.has(r.id))
+          .reduce((s, r) => s + r.total, 0);
+        return fromTrips + fromReceipts;
       },
 
       getArchiveForItem: (itemKey) =>
@@ -177,14 +209,21 @@ export const useAppStore = create<AppState>()(
       setTheme: (theme) => set((s) => ({ settings: { ...s.settings, theme } })),
       setCityFallback: (city) => set((s) => ({ settings: { ...s.settings, cityFallback: city } })),
       setOpenAiKey: (key) => set((s) => ({ settings: { ...s.settings, openAiApiKey: key } })),
+      setOnline: (online) =>
+        set({
+          online,
+          syncStatus: !online
+            ? 'offline'
+            : isFirebaseConfigured()
+              ? 'online'
+              : 'local',
+        }),
 
       loginEmail: async (email, password) => {
-        const user = await signInWithEmail(email, password);
-        set({ user });
+        set({ user: await signInWithEmail(email, password) });
       },
       loginGoogle: async () => {
-        const user = await signInWithGoogle();
-        set({ user });
+        set({ user: await signInWithGoogle() });
       },
       logout: async () => {
         await signOutFirebase();
@@ -201,13 +240,17 @@ export const useAppStore = create<AppState>()(
         }),
 
       addStore: (input) => {
-        const store: Store = {
-          ...input,
-          id: uid('store'),
-          isCustom: true,
-          isFavorite: input.isFavorite ?? false,
-        };
-        set((s) => ({ stores: [...s.stores, store] }));
+        set((s) => ({
+          stores: [
+            ...s.stores,
+            {
+              ...input,
+              id: uid('store'),
+              isCustom: true,
+              isFavorite: input.isFavorite ?? false,
+            },
+          ],
+        }));
       },
 
       toggleFavorite: (storeId) =>
@@ -222,10 +265,20 @@ export const useAppStore = create<AppState>()(
         const exists = list.selectedStoreIds.includes(storeId);
         let next: string[];
         if (exists) next = list.selectedStoreIds.filter((id) => id !== storeId);
-        else if (list.selectedStoreIds.length >= 5)
+        else if (list.selectedStoreIds.length >= 3)
           next = [...list.selectedStoreIds.slice(1), storeId];
         else next = [...list.selectedStoreIds, storeId];
         const updated = { ...list, selectedStoreIds: next, updatedAt: new Date().toISOString() };
+        set({ list: updated });
+        void syncList(updated);
+      },
+
+      setSelectedStores: (ids) => {
+        const updated = {
+          ...get().list,
+          selectedStoreIds: ids.slice(0, 3),
+          updatedAt: new Date().toISOString(),
+        };
         set({ list: updated });
         void syncList(updated);
       },
@@ -283,26 +336,11 @@ export const useAppStore = create<AppState>()(
           ...get().list,
           items: get().list.items.map((it) => {
             if (it.id !== id) return it;
-            const quantity = Math.max(0.1, Math.round((it.quantity + delta) * 10) / 10);
+            const step = it.unit === 'kg' || it.unit === 'l' ? 0.1 : 1;
+            const quantity = Math.max(step, Math.round((it.quantity + delta * step) * 10) / 10);
             const lineTotal =
               it.unitPrice != null ? Math.round(it.unitPrice * quantity * 100) / 100 : it.lineTotal;
             return { ...it, quantity, lineTotal };
-          }),
-          updatedAt: new Date().toISOString(),
-        };
-        set({ list: updated });
-        void syncList(updated);
-      },
-
-      setQuantity: (id, quantity) => {
-        const q = Math.max(0.01, quantity);
-        const updated = {
-          ...get().list,
-          items: get().list.items.map((it) => {
-            if (it.id !== id) return it;
-            const lineTotal =
-              it.unitPrice != null ? Math.round(it.unitPrice * q * 100) / 100 : it.lineTotal;
-            return { ...it, quantity: q, lineTotal };
           }),
           updatedAt: new Date().toISOString(),
         };
@@ -328,20 +366,25 @@ export const useAppStore = create<AppState>()(
             ...get().list,
             items: get().list.items.map((it) =>
               it.id === id
-                ? { ...it, checked: false, unitPrice: undefined, lineTotal: undefined }
+                ? {
+                    ...it,
+                    checked: false,
+                    unitPrice: undefined,
+                    lineTotal: undefined,
+                    priceDelta: undefined,
+                  }
                 : it,
             ),
             updatedAt: new Date().toISOString(),
           };
-          set({ list: updated, pendingPrice: null });
+          set({ list: updated, pendingPriceItemId: null });
           void syncList(updated);
           return;
         }
-        set({ pendingPrice: { itemId: id } });
+        set({ pendingPriceItemId: id });
       },
 
-      openPriceEntry: (itemId) =>
-        set({ pendingPrice: itemId ? { itemId } : null }),
+      openPriceEntry: (itemId) => set({ pendingPriceItemId: itemId }),
 
       confirmToCart: async (itemId, unitPrice, quantity) => {
         const { list, stores, archive } = get();
@@ -349,6 +392,7 @@ export const useAppStore = create<AppState>()(
         const item = list.items.find((i) => i.id === itemId);
         if (!item || !store) return;
 
+        const delta = priceDeltaVsLast(archive, item.name, store.id, unitPrice);
         const lineTotal = Math.round(unitPrice * quantity * 100) / 100;
         const entry: ArchiveEntry = {
           id: uid('arch'),
@@ -377,6 +421,7 @@ export const useAppStore = create<AppState>()(
                   quantity,
                   unitPrice,
                   lineTotal,
+                  priceDelta: delta ?? undefined,
                 }
               : it,
           ),
@@ -386,14 +431,14 @@ export const useAppStore = create<AppState>()(
         set({
           list: updated,
           archive: [entry, ...archive],
-          pendingPrice: null,
+          pendingPriceItemId: null,
+          syncStatus: get().online && isFirebaseConfigured() ? 'sync' : get().syncStatus,
         });
 
         void syncList(updated);
-        void pushArchiveEntry(entry);
-
-        // delta vs last (za UI se računa u modalu/headeru)
-        void priceDeltaVsLast(archive, item.name, store.id, unitPrice);
+        void pushArchiveEntry(entry).then(() => {
+          if (get().online && isFirebaseConfigured()) set({ syncStatus: 'online' });
+        });
       },
 
       finishShopping: () => {
@@ -424,11 +469,66 @@ export const useAppStore = create<AppState>()(
           updatedAt: new Date().toISOString(),
         };
 
-        set({
-          trips: [trip, ...trips],
-          list: updated,
-        });
+        set({ trips: [trip, ...trips], list: updated });
         void syncList(updated);
+      },
+
+      saveReceipt: async (input) => {
+        const receipt: Receipt = {
+          id: uid('rcpt'),
+          storeId: input.storeId,
+          storeName: input.storeName,
+          date: input.date,
+          total: input.total,
+          items: input.items.length ? input.items : toReceiptItems([]),
+          imageDataUrl: input.imageDataUrl,
+          note: input.note,
+          createdAt: new Date().toISOString(),
+          source: input.source,
+        };
+
+        const newArchive: ArchiveEntry[] = receipt.items.map((it) => ({
+          id: uid('arch'),
+          itemKey: normalizeItemKey(it.name),
+          itemName: it.name,
+          unit: it.unit,
+          category: it.category,
+          unitPrice: it.unitPrice,
+          quantity: it.quantity,
+          lineTotal: it.lineTotal,
+          storeId: receipt.storeId,
+          storeName: receipt.storeName,
+          recordedAt: receipt.date,
+          listId: get().list.id,
+          source: 'receipt' as const,
+          receiptId: receipt.id,
+        }));
+
+        const trip: CompletedTrip = {
+          id: uid('trip'),
+          date: receipt.date,
+          storeId: receipt.storeId,
+          storeName: receipt.storeName,
+          total: receipt.total,
+          itemCount: receipt.items.length,
+          items: receipt.items.map((i) => ({
+            name: i.name,
+            quantity: i.quantity,
+            unit: i.unit,
+            unitPrice: i.unitPrice,
+            lineTotal: i.lineTotal,
+          })),
+          receiptId: receipt.id,
+        };
+
+        set((s) => ({
+          receipts: [receipt, ...s.receipts],
+          archive: [...newArchive, ...s.archive],
+          trips: [trip, ...s.trips],
+        }));
+
+        void pushReceipt(receipt);
+        for (const entry of newArchive) void pushArchiveEntry(entry);
       },
 
       setBudget: (amount) => set({ budgetAmount: amount }),
@@ -474,17 +574,17 @@ export const useAppStore = create<AppState>()(
           set({ syncStatus: 'local' });
           return;
         }
-        set({ syncStatus: 'syncing' });
+        set({ syncStatus: 'sync' });
         const code = get().list.shareCode;
         await subscribeSharedList(code, (remote) => {
           if (remote.updatedAt > get().list.updatedAt) {
-            set({ list: remote, syncStatus: 'live' });
+            set({ list: remote, syncStatus: get().online ? 'online' : 'offline' });
           } else {
-            set({ syncStatus: 'live' });
+            set({ syncStatus: get().online ? 'online' : 'offline' });
           }
         });
         await syncList(get().list);
-        set({ syncStatus: 'live' });
+        set({ syncStatus: get().online ? 'online' : 'offline' });
       },
 
       setHistoryItemKey: (key) => set({ historyItemKey: key }),
@@ -497,15 +597,13 @@ export const useAppStore = create<AppState>()(
             firebaseConfigured: result.mode === 'live',
             useMockData: result.mode !== 'live',
           },
-          syncStatus: result.mode === 'live' ? 'syncing' : 'local',
+          syncStatus: result.mode === 'live' ? 'sync' : 'local',
         }));
-        if (result.mode === 'live') {
-          await get().startListSync();
-        }
+        if (result.mode === 'live') await get().startListSync();
       },
     }),
     {
-      name: 'kupikm-v2',
+      name: 'kupikm-v3',
       partialize: (s) => ({
         settings: s.settings,
         stores: s.stores,
@@ -513,6 +611,7 @@ export const useAppStore = create<AppState>()(
         archive: s.archive,
         remembered: s.remembered,
         trips: s.trips,
+        receipts: s.receipts,
         budgetAmount: s.budgetAmount,
         user: s.user,
       }),

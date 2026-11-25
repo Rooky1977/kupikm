@@ -11,6 +11,8 @@ export type Category =
   | 'hemija'
   | 'ostalo';
 
+export type SyncStatus = 'online' | 'offline' | 'sync' | 'local';
+
 export interface GeoPoint {
   lat: number;
   lng: number;
@@ -28,7 +30,6 @@ export interface Store {
   isCustom?: boolean;
 }
 
-/** Zapis u arhivi cijena (auto-snimanje pri stavljanju u korpu). */
 export interface ArchiveEntry {
   id: string;
   itemKey: string;
@@ -44,6 +45,29 @@ export interface ArchiveEntry {
   recordedAt: string;
   listId: string;
   source: 'cart' | 'manual' | 'receipt' | 'demo';
+  receiptId?: string;
+}
+
+export interface ReceiptItem {
+  name: string;
+  quantity: number;
+  unit: Unit;
+  unitPrice: number;
+  lineTotal: number;
+  category: Category;
+}
+
+export interface Receipt {
+  id: string;
+  storeId: string;
+  storeName: string;
+  date: string;
+  total: number;
+  items: ReceiptItem[];
+  imageDataUrl?: string;
+  note?: string;
+  createdAt: string;
+  source: 'camera' | 'upload' | 'manual' | 'ai' | 'demo';
 }
 
 export interface CatalogVariant {
@@ -62,7 +86,6 @@ export interface CatalogProduct {
   variants: CatalogVariant[];
 }
 
-/** Korisnički zapamćen artikal (lokalno + Firestore). */
 export interface RememberedItem {
   id: string;
   name: string;
@@ -80,9 +103,10 @@ export interface ListItem {
   unit: Unit;
   category: Category;
   checked: boolean;
-  /** Cijena po jedinici kad je u korpi */
   unitPrice?: number;
   lineTotal?: number;
+  /** Razlika u odnosu na prethodnu cijenu (KM po jedinici) */
+  priceDelta?: number;
   catalogId?: string;
   notes?: string;
 }
@@ -112,6 +136,7 @@ export interface CompletedTrip {
     lineTotal: number;
   }>;
   note?: string;
+  receiptId?: string;
 }
 
 export interface UserProfile {
@@ -137,7 +162,10 @@ export interface StoreEstimate {
   missingCount: number;
   missingItemIds: string[];
   distanceKm?: number;
+  score: number;
   isCheapest: boolean;
+  isClosest: boolean;
+  isBestChoice: boolean;
 }
 
 export interface LastPriceInfo {
@@ -148,6 +176,17 @@ export interface LastPriceInfo {
   isLowest: boolean;
   lowestPrice?: number;
   lowestStoreName?: string;
+}
+
+export interface CirkaSummary {
+  cartTotal: number;
+  estimatedFull: number;
+  remainingEstimate: number;
+  inCartCount: number;
+  totalCount: number;
+  budgetRemaining: number;
+  budgetAmount: number;
+  budgetPct: number;
 }
 
 export const CATEGORY_LABELS: Record<Category, string> = {

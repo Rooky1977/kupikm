@@ -1,4 +1,10 @@
-import type { ArchiveEntry, RememberedItem, ShoppingList, UserProfile } from '../types';
+import type {
+  ArchiveEntry,
+  Receipt,
+  RememberedItem,
+  ShoppingList,
+  UserProfile,
+} from '../types';
 
 export interface FirebaseConfig {
   apiKey: string;
@@ -27,11 +33,10 @@ type Firestore = import('firebase/firestore').Firestore;
 
 let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
-let persistenceReady = false;
 
 export async function initFirebase(config: FirebaseConfig = ENV_CONFIG) {
   if (!isFirebaseConfigured(config)) {
-    return { mode: 'mock' as const, db: null };
+    return { mode: 'mock' as const, db: null, persistenceReady: false };
   }
 
   const { initializeApp, getApps } = await import('firebase/app');
@@ -44,6 +49,7 @@ export async function initFirebase(config: FirebaseConfig = ENV_CONFIG) {
 
   app = getApps().length ? getApps()[0]! : initializeApp(config);
 
+  let persistenceReady = false;
   try {
     db = initializeFirestore(app, {
       localCache: persistentLocalCache({
@@ -53,7 +59,6 @@ export async function initFirebase(config: FirebaseConfig = ENV_CONFIG) {
     persistenceReady = true;
   } catch {
     db = getFirestore(app);
-    persistenceReady = false;
   }
 
   return { mode: 'live' as const, db, persistenceReady };
@@ -61,10 +66,6 @@ export async function initFirebase(config: FirebaseConfig = ENV_CONFIG) {
 
 export function getDb() {
   return db;
-}
-
-export function getApp() {
-  return app;
 }
 
 export async function signInWithEmail(email: string, password: string): Promise<UserProfile> {
@@ -113,7 +114,6 @@ export async function signOutFirebase(): Promise<void> {
   await signOut(getAuth(app));
 }
 
-/** Spremi arhivski zapis cijene (offline-capable). */
 export async function pushArchiveEntry(entry: ArchiveEntry): Promise<void> {
   if (!db || !isFirebaseConfigured()) return;
   const { doc, setDoc } = await import('firebase/firestore');
@@ -132,9 +132,19 @@ export async function pushShoppingList(list: ShoppingList): Promise<void> {
   await setDoc(doc(db, 'shoppingLists', list.shareCode), list, { merge: true });
 }
 
+export async function pushReceipt(receipt: Receipt): Promise<void> {
+  if (!db || !isFirebaseConfigured()) return;
+  const { doc, setDoc } = await import('firebase/firestore');
+  // Ne šalji ogromne base64 slike ako su prevelike — zadrži thumbnail lokalno
+  const payload = { ...receipt };
+  if (payload.imageDataUrl && payload.imageDataUrl.length > 400_000) {
+    delete payload.imageDataUrl;
+  }
+  await setDoc(doc(db, 'receipts', receipt.id), payload, { merge: true });
+}
+
 export type Unsub = () => void;
 
-/** Real-time sync dijeljenog spiska preko shareCode. */
 export async function subscribeSharedList(
   shareCode: string,
   onChange: (list: ShoppingList) => void,
@@ -143,16 +153,5 @@ export async function subscribeSharedList(
   const { doc, onSnapshot } = await import('firebase/firestore');
   return onSnapshot(doc(db, 'shoppingLists', shareCode.toUpperCase()), (snap) => {
     if (snap.exists()) onChange(snap.data() as ShoppingList);
-  });
-}
-
-export async function subscribeArchive(
-  onChange: (entries: ArchiveEntry[]) => void,
-): Promise<Unsub> {
-  if (!db || !isFirebaseConfigured()) return () => undefined;
-  const { collection, onSnapshot, orderBy, query, limit } = await import('firebase/firestore');
-  const q = query(collection(db, 'priceArchive'), orderBy('recordedAt', 'desc'), limit(500));
-  return onSnapshot(q, (snap) => {
-    onChange(snap.docs.map((d) => d.data() as ArchiveEntry));
   });
 }

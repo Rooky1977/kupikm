@@ -1,4 +1,4 @@
-import type { ArchiveEntry, CompletedTrip, ListItem, ShoppingList, Store } from '../types';
+import type { ArchiveEntry, CompletedTrip, ListItem, Receipt, ShoppingList, Store } from '../types';
 import { normalizeItemKey } from '../lib/format';
 
 export const DEMO_STORES: Store[] = [
@@ -43,23 +43,13 @@ export const DEMO_STORES: Store[] = [
     isFavorite: false,
   },
   {
-    id: 'lidl-ilidza',
-    name: 'Lidl Ilidža',
-    brand: 'Lidl',
+    id: 'djuric-grbavica',
+    name: 'Đurić Grbavica',
+    brand: 'Đurić',
     city: 'Sarajevo',
-    zone: 'Ilidža',
-    address: 'Butmirska cesta',
-    location: { lat: 43.8235, lng: 18.2995 },
-    isFavorite: false,
-  },
-  {
-    id: 'robot-tuzla',
-    name: 'Robot Tuzla',
-    brand: 'Robot',
-    city: 'Tuzla',
-    zone: 'Centar',
-    address: 'Muhameda Hevaija Uskufija',
-    location: { lat: 44.5384, lng: 18.6671 },
+    zone: 'Grbavica',
+    address: 'Zagrebačka bb',
+    location: { lat: 43.8489, lng: 18.3912 },
     isFavorite: false,
   },
   {
@@ -83,13 +73,23 @@ export const DEMO_STORES: Store[] = [
     isFavorite: false,
   },
   {
-    id: 'penny-ilidza',
-    name: 'Penny Ilidža',
-    brand: 'Penny',
+    id: 'robot-tuzla',
+    name: 'Robot Tuzla',
+    brand: 'Robot',
+    city: 'Tuzla',
+    zone: 'Centar',
+    address: 'Muhameda Hevaija Uskufija',
+    location: { lat: 44.5384, lng: 18.6671 },
+    isFavorite: false,
+  },
+  {
+    id: 'lidl-ilidza',
+    name: 'Lidl Ilidža',
+    brand: 'Lidl',
     city: 'Sarajevo',
     zone: 'Ilidža',
     address: 'Butmirska cesta',
-    location: { lat: 43.8241, lng: 18.3018 },
+    location: { lat: 43.8235, lng: 18.2995 },
     isFavorite: false,
   },
 ];
@@ -104,6 +104,16 @@ export const DEMO_LIST_ITEMS: ListItem[] = [
     category: 'mlijecno',
     checked: false,
     catalogId: 'mlijeko-1l',
+  },
+  {
+    id: 'item-ulje',
+    name: 'Ulje Floriol 1L',
+    variant: 'Ulje Floriol 1L',
+    quantity: 1,
+    unit: 'l',
+    category: 'ostalo',
+    checked: false,
+    catalogId: 'ulje-floriol-1l',
   },
   {
     id: 'item-jaja',
@@ -142,15 +152,6 @@ export const DEMO_LIST_ITEMS: ListItem[] = [
     catalogId: 'pile-file',
   },
   {
-    id: 'item-ulje',
-    name: 'Suncokretovo ulje 1L',
-    quantity: 1,
-    unit: 'l',
-    category: 'ostalo',
-    checked: false,
-    catalogId: 'ulje-1l',
-  },
-  {
     id: 'item-voda',
     name: 'Voda 1.5L',
     quantity: 6,
@@ -160,47 +161,47 @@ export const DEMO_LIST_ITEMS: ListItem[] = [
     catalogId: 'voda-15l',
   },
   {
-    id: 'item-deterdzent',
-    name: 'Deterdžent za veš',
+    id: 'item-sampon',
+    name: 'Šampon',
     quantity: 1,
     unit: 'kom',
     category: 'hemija',
     checked: false,
-    catalogId: 'deterdzent',
+    catalogId: 'sampon',
   },
 ];
 
 const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString();
 
-/** Demo arhiva cijena po radnjama. */
 export function buildDemoArchive(): ArchiveEntry[] {
   const rows: Array<Omit<ArchiveEntry, 'id' | 'itemKey' | 'lineTotal' | 'listId' | 'source'>> = [
     { itemName: 'Mlijeko 1L (tetrapak)', unit: 'l', category: 'mlijecno', unitPrice: 1.99, quantity: 1, storeId: 'bingo-ilidza', storeName: 'Bingo Ilidža', recordedAt: daysAgo(2) },
     { itemName: 'Mlijeko 1L (tetrapak)', unit: 'l', category: 'mlijecno', unitPrice: 2.19, quantity: 1, storeId: 'konzum-centar', storeName: 'Konzum Centar', recordedAt: daysAgo(5) },
     { itemName: 'Mlijeko 1L (tetrapak)', unit: 'l', category: 'mlijecno', unitPrice: 2.09, quantity: 1, storeId: 'mercator-skenderija', storeName: 'Mercator Skenderija', recordedAt: daysAgo(8) },
-    { itemName: 'Mlijeko 1L (tetrapak)', unit: 'l', category: 'mlijecno', unitPrice: 1.89, quantity: 1, storeId: 'lidl-ilidza', storeName: 'Lidl Ilidža', recordedAt: daysAgo(3) },
-    { itemName: 'Mlijeko 1L (tetrapak)', unit: 'l', category: 'mlijecno', unitPrice: 1.95, quantity: 1, storeId: 'amko-novo-sarajevo', storeName: 'Amko Novo Sarajevo', recordedAt: daysAgo(12) },
+    { itemName: 'Mlijeko 1L (tetrapak)', unit: 'l', category: 'mlijecno', unitPrice: 1.89, quantity: 1, storeId: 'djuric-grbavica', storeName: 'Đurić Grbavica', recordedAt: daysAgo(4) },
+    { itemName: 'Ulje Floriol 1L', unit: 'l', category: 'ostalo', unitPrice: 3.89, quantity: 1, storeId: 'bingo-ilidza', storeName: 'Bingo Ilidža', recordedAt: daysAgo(6) },
+    { itemName: 'Ulje Floriol 1L', unit: 'l', category: 'ostalo', unitPrice: 4.29, quantity: 1, storeId: 'konzum-centar', storeName: 'Konzum Centar', recordedAt: daysAgo(9) },
+    { itemName: 'Ulje Floriol 1L', unit: 'l', category: 'ostalo', unitPrice: 3.79, quantity: 1, storeId: 'djuric-grbavica', storeName: 'Đurić Grbavica', recordedAt: daysAgo(3) },
+    { itemName: 'Ulje suncokretovo 1L', unit: 'l', category: 'ostalo', unitPrice: 3.99, quantity: 1, storeId: 'bingo-ilidza', storeName: 'Bingo Ilidža', recordedAt: daysAgo(10) },
+    { itemName: 'Ulje maslinovo 1L', unit: 'l', category: 'ostalo', unitPrice: 12.49, quantity: 1, storeId: 'konzum-centar', storeName: 'Konzum Centar', recordedAt: daysAgo(12) },
     { itemName: 'Jaja 10 kom', unit: 'pak', category: 'mlijecno', unitPrice: 4.29, quantity: 1, storeId: 'bingo-ilidza', storeName: 'Bingo Ilidža', recordedAt: daysAgo(2) },
     { itemName: 'Jaja 10 kom', unit: 'pak', category: 'mlijecno', unitPrice: 4.59, quantity: 1, storeId: 'konzum-centar', storeName: 'Konzum Centar', recordedAt: daysAgo(5) },
-    { itemName: 'Jaja 10 kom', unit: 'pak', category: 'mlijecno', unitPrice: 3.99, quantity: 1, storeId: 'lidl-ilidza', storeName: 'Lidl Ilidža', recordedAt: daysAgo(3) },
+    { itemName: 'Jaja 10 kom', unit: 'pak', category: 'mlijecno', unitPrice: 4.19, quantity: 1, storeId: 'djuric-grbavica', storeName: 'Đurić Grbavica', recordedAt: daysAgo(3) },
     { itemName: 'Hljeb bijeli', unit: 'kom', category: 'pekara', unitPrice: 1.69, quantity: 1, storeId: 'bingo-ilidza', storeName: 'Bingo Ilidža', recordedAt: daysAgo(1) },
     { itemName: 'Hljeb bijeli', unit: 'kom', category: 'pekara', unitPrice: 1.89, quantity: 1, storeId: 'konzum-centar', storeName: 'Konzum Centar', recordedAt: daysAgo(4) },
-    { itemName: 'Hljeb bijeli', unit: 'kom', category: 'pekara', unitPrice: 1.49, quantity: 1, storeId: 'lidl-ilidza', storeName: 'Lidl Ilidža', recordedAt: daysAgo(3) },
+    { itemName: 'Hljeb bijeli', unit: 'kom', category: 'pekara', unitPrice: 1.59, quantity: 1, storeId: 'djuric-grbavica', storeName: 'Đurić Grbavica', recordedAt: daysAgo(2) },
     { itemName: 'Banane', unit: 'kg', category: 'voce-povrce', unitPrice: 2.69, quantity: 1, storeId: 'bingo-ilidza', storeName: 'Bingo Ilidža', recordedAt: daysAgo(2) },
     { itemName: 'Banane', unit: 'kg', category: 'voce-povrce', unitPrice: 2.99, quantity: 1, storeId: 'konzum-centar', storeName: 'Konzum Centar', recordedAt: daysAgo(6) },
-    { itemName: 'Banane', unit: 'kg', category: 'voce-povrce', unitPrice: 2.39, quantity: 1, storeId: 'lidl-ilidza', storeName: 'Lidl Ilidža', recordedAt: daysAgo(3) },
+    { itemName: 'Banane', unit: 'kg', category: 'voce-povrce', unitPrice: 2.49, quantity: 1, storeId: 'crvena-jabuka-dobrinja', storeName: 'Crvena jabuka Dobrinja', recordedAt: daysAgo(3) },
     { itemName: 'Pileći file', unit: 'kg', category: 'meso', unitPrice: 11.49, quantity: 1, storeId: 'bingo-ilidza', storeName: 'Bingo Ilidža', recordedAt: daysAgo(7) },
     { itemName: 'Pileći file', unit: 'kg', category: 'meso', unitPrice: 12.99, quantity: 1, storeId: 'konzum-centar', storeName: 'Konzum Centar', recordedAt: daysAgo(9) },
     { itemName: 'Pileći file', unit: 'kg', category: 'meso', unitPrice: 11.29, quantity: 1, storeId: 'amko-novo-sarajevo', storeName: 'Amko Novo Sarajevo', recordedAt: daysAgo(4) },
-    { itemName: 'Suncokretovo ulje 1L', unit: 'l', category: 'ostalo', unitPrice: 3.99, quantity: 1, storeId: 'bingo-ilidza', storeName: 'Bingo Ilidža', recordedAt: daysAgo(10) },
-    { itemName: 'Suncokretovo ulje 1L', unit: 'l', category: 'ostalo', unitPrice: 4.49, quantity: 1, storeId: 'konzum-centar', storeName: 'Konzum Centar', recordedAt: daysAgo(11) },
-    { itemName: 'Suncokretovo ulje 1L', unit: 'l', category: 'ostalo', unitPrice: 3.79, quantity: 1, storeId: 'lidl-ilidza', storeName: 'Lidl Ilidža', recordedAt: daysAgo(3) },
     { itemName: 'Voda 1.5L', unit: 'kom', category: 'pice', unitPrice: 0.79, quantity: 1, storeId: 'bingo-ilidza', storeName: 'Bingo Ilidža', recordedAt: daysAgo(2) },
     { itemName: 'Voda 1.5L', unit: 'kom', category: 'pice', unitPrice: 0.89, quantity: 1, storeId: 'konzum-centar', storeName: 'Konzum Centar', recordedAt: daysAgo(5) },
-    { itemName: 'Voda 1.5L', unit: 'kom', category: 'pice', unitPrice: 0.69, quantity: 1, storeId: 'lidl-ilidza', storeName: 'Lidl Ilidža', recordedAt: daysAgo(3) },
-    { itemName: 'Deterdžent za veš', unit: 'kom', category: 'hemija', unitPrice: 13.49, quantity: 1, storeId: 'bingo-ilidza', storeName: 'Bingo Ilidža', recordedAt: daysAgo(15) },
-    { itemName: 'Deterdžent za veš', unit: 'kom', category: 'hemija', unitPrice: 14.99, quantity: 1, storeId: 'konzum-centar', storeName: 'Konzum Centar', recordedAt: daysAgo(18) },
-    { itemName: 'Deterdžent za veš', unit: 'kom', category: 'hemija', unitPrice: 12.95, quantity: 1, storeId: 'dm-scc', storeName: 'dm SCC', recordedAt: daysAgo(6) },
+    { itemName: 'Voda 1.5L', unit: 'kom', category: 'pice', unitPrice: 0.72, quantity: 1, storeId: 'djuric-grbavica', storeName: 'Đurić Grbavica', recordedAt: daysAgo(3) },
+    { itemName: 'Šampon', unit: 'kom', category: 'hemija', unitPrice: 5.95, quantity: 1, storeId: 'dm-scc', storeName: 'dm SCC', recordedAt: daysAgo(8) },
+    { itemName: 'Šampon', unit: 'kom', category: 'hemija', unitPrice: 6.49, quantity: 1, storeId: 'konzum-centar', storeName: 'Konzum Centar', recordedAt: daysAgo(14) },
+    { itemName: 'Pasta za zube', unit: 'kom', category: 'hemija', unitPrice: 2.95, quantity: 1, storeId: 'dm-scc', storeName: 'dm SCC', recordedAt: daysAgo(8) },
   ];
 
   return rows.map((r, i) => ({
@@ -218,7 +219,7 @@ export const DEMO_LIST: ShoppingList = {
   name: 'Porodični spisak',
   shareCode: 'KUPI-7X2M',
   items: DEMO_LIST_ITEMS,
-  selectedStoreIds: ['bingo-ilidza', 'konzum-centar', 'lidl-ilidza'],
+  selectedStoreIds: ['bingo-ilidza', 'konzum-centar', 'djuric-grbavica'],
   activeStoreId: 'bingo-ilidza',
   updatedAt: new Date().toISOString(),
 };
@@ -230,10 +231,10 @@ export const DEMO_TRIPS: CompletedTrip[] = [
     storeId: 'bingo-ilidza',
     storeName: 'Bingo Ilidža',
     total: 68.4,
-    itemCount: 14,
+    itemCount: 12,
     items: [
       { name: 'Mlijeko 1L (tetrapak)', quantity: 2, unit: 'l', unitPrice: 1.99, lineTotal: 3.98 },
-      { name: 'Voda 1.5L', quantity: 6, unit: 'kom', unitPrice: 0.79, lineTotal: 4.74 },
+      { name: 'Ulje Floriol 1L', quantity: 1, unit: 'l', unitPrice: 3.89, lineTotal: 3.89 },
     ],
   },
   {
@@ -242,9 +243,26 @@ export const DEMO_TRIPS: CompletedTrip[] = [
     storeId: 'konzum-centar',
     storeName: 'Konzum Centar',
     total: 92.15,
-    itemCount: 18,
+    itemCount: 15,
     items: [
       { name: 'Pileći file', quantity: 1.2, unit: 'kg', unitPrice: 12.99, lineTotal: 15.59 },
+    ],
+  },
+];
+
+export const DEMO_RECEIPTS: Receipt[] = [
+  {
+    id: 'rcpt-1',
+    storeId: 'bingo-ilidza',
+    storeName: 'Bingo Ilidža',
+    date: daysAgo(3),
+    total: 68.4,
+    createdAt: daysAgo(3),
+    source: 'demo',
+    items: [
+      { name: 'Mlijeko 1L (tetrapak)', quantity: 2, unit: 'l', unitPrice: 1.99, lineTotal: 3.98, category: 'mlijecno' },
+      { name: 'Ulje Floriol 1L', quantity: 1, unit: 'l', unitPrice: 3.89, lineTotal: 3.89, category: 'ostalo' },
+      { name: 'Voda 1.5L', quantity: 6, unit: 'kom', unitPrice: 0.79, lineTotal: 4.74, category: 'pice' },
     ],
   },
 ];

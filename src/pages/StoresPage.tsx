@@ -36,7 +36,7 @@ export function StoresPage() {
     [stores, userLocation],
   );
 
-  const estimates = getEstimates();
+  const estimates = getEstimates(true);
 
   const onAdd = (e: FormEvent) => {
     e.preventDefault();
@@ -60,7 +60,7 @@ export function StoresPage() {
         <div>
           <h1>Radnje</h1>
           <p>
-            Lokacija: {locationMode === 'gps' ? 'GPS' : settings.cityFallback}
+            Lokacija: {locationMode === 'gps' ? 'GPS' : settings.cityFallback} · izaberi do 3 za poređenje
           </p>
         </div>
         <button type="button" className="btn" onClick={() => setShowAdd((v) => !v)}>
@@ -140,14 +140,13 @@ export function StoresPage() {
                   </button>
                 </div>
                 <div className="chip-row">
-                  {est?.isCheapest && <span className="badge badge-best">NAJJEFTINIJE</span>}
-                  {selected && <span className="badge badge-action">Za poređenje</span>}
-                  {list.activeStoreId === store.id && (
-                    <span className="badge">Aktivna</span>
-                  )}
+                  {est?.isCheapest && <span className="badge badge-action">NAJJEFTINIJE</span>}
+                  {est?.isClosest && <span className="badge badge-best">Najbliže</span>}
+                  {est?.isBestChoice && <span className="badge">Najbolji omjer</span>}
+                  {selected && <span className="badge">Za poređenje</span>}
                 </div>
                 {est && est.pricedCount > 0 && (
-                  <div className="price-big" style={{ fontSize: '1.25rem' }}>
+                  <div className="price-big" style={{ fontSize: '1.2rem' }}>
                     {formatKm(est.total)}
                   </div>
                 )}
@@ -157,7 +156,7 @@ export function StoresPage() {
                     className={`btn btn-sm${selected ? '' : ' btn-ghost'}`}
                     onClick={() => toggleSelectedStore(store.id)}
                   >
-                    {selected ? 'Ukloni iz poređenja' : 'Uporedi'}
+                    {selected ? 'Ukloni iz poređenja' : 'Uporedi (max 3)'}
                   </button>
                   <button
                     type="button"
@@ -173,14 +172,18 @@ export function StoresPage() {
         </section>
 
         <aside className="card stack">
-          <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Brzo poređenje</h2>
+          <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Sažetak poređenja</h2>
           {estimates.map((est) => {
             const store = stores.find((s) => s.id === est.storeId);
             return (
               <div key={est.storeId} className={`store-card${est.isCheapest ? ' best' : ''}`}>
                 <strong>{store?.name}</strong>
                 <div className="price-big">{est.pricedCount ? formatKm(est.total) : 'Nema cijena'}</div>
-                {est.isCheapest && <span className="badge badge-best">NAJJEFTINIJE</span>}
+                <div className="chip-row">
+                  {est.isCheapest && <span className="badge badge-action">NAJJEFTINIJE</span>}
+                  {est.isClosest && <span className="badge badge-best">Najbliže</span>}
+                  {est.isBestChoice && <span className="badge">Najbolji omjer</span>}
+                </div>
               </div>
             );
           })}
