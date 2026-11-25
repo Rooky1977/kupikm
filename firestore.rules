@@ -1,0 +1,14 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /shoppingLists/{code} {
+      allow read, write: if true;
+    }
+    match /priceArchive/{id} {
+      allow read, write: if true;
+    }
+    match /catalogRemembered/{id} {
+      allow read, write: if true;
+    }
+  }
+}
