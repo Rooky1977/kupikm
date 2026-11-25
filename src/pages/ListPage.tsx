@@ -3,8 +3,9 @@ import { SmartAdd } from '../components/list/SmartAdd';
 import { PriceDeltaBadge } from '../components/list/PriceDeltaBadge';
 import { LoyaltyCardsModal } from '../components/loyalty/LoyaltyCards';
 import { getFrequentItems } from '../lib/frequentItems';
-import { formatDistance, formatKm } from '../lib/format';
+import { formatDateTime, formatDistance, formatKm } from '../lib/format';
 import { haversineKm } from '../lib/geolocation';
+import { findPantryMatch, pantryWarningText } from '../lib/pantry';
 import { isSuperPrice } from '../lib/scoring';
 import { computeSplitCart } from '../lib/splitCart';
 import {
@@ -25,9 +26,15 @@ export function ListPage() {
   const list = useAppStore((s) => s.list);
   const stores = useAppStore((s) => s.stores);
   const archive = useAppStore((s) => s.archive);
+  const pantry = useAppStore((s) => s.pantry);
   const templates = useAppStore((s) => s.templates);
   const settings = useAppStore((s) => s.settings);
   const lastUiError = useAppStore((s) => s.lastUiError);
+  const lastTripVariance = useAppStore((s) => s.lastTripVariance);
+  const pendingPantryOffer = useAppStore((s) => s.pendingPantryOffer);
+  const clearTripVariance = useAppStore((s) => s.clearTripVariance);
+  const applyPendingPantryOffer = useAppStore((s) => s.applyPendingPantryOffer);
+  const dismissPendingPantryOffer = useAppStore((s) => s.dismissPendingPantryOffer);
   const userLocation = useAppStore((s) => s.userLocation);
   const setActiveStore = useAppStore((s) => s.setActiveStore);
   const toggleSelectedStore = useAppStore((s) => s.toggleSelectedStore);
@@ -49,6 +56,7 @@ export function ListPage() {
   const [tplMsg, setTplMsg] = useState('');
   const [loyaltyOpen, setLoyaltyOpen] = useState(false);
   const [wakeMsg, setWakeMsg] = useState('');
+  const [pantrySelected, setPantrySelected] = useState<Record<string, boolean>>({});
 
   const todo = list.items.filter((i) => !i.checked);
   const cart = list.items.filter((i) => i.checked);
@@ -139,9 +147,17 @@ export function ListPage() {
     });
   };
 
+  useEffect(() => {
+    if (!pendingPantryOffer) return;
+    const init: Record<string, boolean> = {};
+    for (const row of pendingPantryOffer) init[row.name] = true;
+    setPantrySelected(init);
+  }, [pendingPantryOffer]);
+
   const renderItem = (item: ListItem) => {
     const last = getLastPrice(item.name);
     const superDeal = last ? isSuperPrice(archive, item.name, last.unitPrice) : false;
+    const stock = findPantryMatch(pantry, item.name);
     return (
       <article key={item.id} className="item-row">
         <button
@@ -157,10 +173,24 @@ export function ListPage() {
           <div className="chip-row" style={{ marginTop: '0.3rem' }}>
             <span className="badge">{CATEGORY_LABELS[item.category]}</span>
             {superDeal && <span className="badge badge-super">Super cijena</span>}
-            {last ? (
+            {stock && (
+              <span className="badge badge-pantry" title={pantryWarningText(stock)}>
+                Špajz: {stock.quantity} {stock.unit}
+              </span>
+            )}
+            {last?.activeStorePrice != null ? (
+              <span className="badge">
+                Ovdje {formatKm(last.activeStorePrice)}
+              </span>
+            ) : null}
+            {last?.lowestPrice != null ? (
               <span className="badge badge-best">
-                {formatKm(last.lowestPrice ?? last.unitPrice)} ·{' '}
-                {last.lowestStoreName ?? last.storeName}
+                Najbolja {formatKm(last.lowestPrice)} · {last.lowestStoreName}
+                {last.lowestRecordedAt ? ` · ${formatDateTime(last.lowestRecordedAt)}` : ''}
+              </span>
+            ) : last ? (
+              <span className="badge badge-best">
+                {formatKm(last.unitPrice)} · {last.storeName}
               </span>
             ) : (
               <span className="badge badge-warn">Nema cijene</span>
@@ -492,6 +522,91 @@ export function ListPage() {
       </aside>
 
       <LoyaltyCardsModal open={loyaltyOpen} onClose={() => setLoyaltyOpen(false)} />
+
+      {lastTripVariance && (
+        <div className="modal-backdrop" role="presentation" onClick={() => clearTripVariance()}>
+          <div className="modal stack" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Sažetak kupovine</h2>
+            <p className="muted" style={{ margin: 0 }}>
+              Procjena {formatKm(lastTripVariance.estimatedTotal)} · stvarno{' '}
+              <strong>{formatKm(lastTripVariance.actualTotal)}</strong> · razlika{' '}
+              <strong style={{ color: lastTripVariance.delta > 0 ? 'var(--danger)' : 'var(--success)' }}>
+                {lastTripVariance.delta > 0 ? '+' : ''}
+                {formatKm(lastTripVariance.delta)}
+              </strong>
+            </p>
+            {lastTripVariance.topDrivers.length > 0 && (
+              <div className="stack" style={{ gap: '0.35rem' }}>
+                <div className="section-title" style={{ margin: 0 }}>
+                  Najveći uticaj na odstupanje
+                </div>
+                {lastTripVariance.topDrivers.map((d) => (
+                  <div key={d.name} className="row" style={{ justifyContent: 'space-between' }}>
+                    <span>{d.name}</span>
+                    <strong style={{ color: d.delta > 0 ? 'var(--danger)' : 'var(--success)' }}>
+                      {d.delta > 0 ? '+' : ''}
+                      {formatKm(d.delta)}
+                    </strong>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button type="button" className="btn btn-action" onClick={() => clearTripVariance()}>
+              U redu
+            </button>
+          </div>
+        </div>
+      )}
+
+      {pendingPantryOffer && !lastTripVariance && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="modal stack" role="dialog" aria-modal="true">
+            <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Dodaj u špajz?</h2>
+            <p className="muted" style={{ margin: 0 }}>
+              Označi kupljene artikle koje želiš dodati u kućne zalihe.
+            </p>
+            <div className="stack" style={{ gap: '0.35rem', maxHeight: 240, overflow: 'auto' }}>
+              {pendingPantryOffer.map((row) => (
+                <label key={row.name} className="switch-row">
+                  <input
+                    type="checkbox"
+                    checked={pantrySelected[row.name] !== false}
+                    onChange={(e) =>
+                      setPantrySelected((s) => ({ ...s, [row.name]: e.target.checked }))
+                    }
+                  />
+                  <span>
+                    {row.name} ({row.quantity} {row.unit})
+                  </span>
+                </label>
+              ))}
+            </div>
+            <div className="row">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ flex: 1 }}
+                onClick={() => dismissPendingPantryOffer()}
+              >
+                Preskoči
+              </button>
+              <button
+                type="button"
+                className="btn btn-action"
+                style={{ flex: 1.2 }}
+                onClick={() => {
+                  const names = pendingPantryOffer
+                    .filter((r) => pantrySelected[r.name] !== false)
+                    .map((r) => r.name);
+                  applyPendingPantryOffer(names);
+                }}
+              >
+                Dodaj u špajz
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

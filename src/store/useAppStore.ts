@@ -21,11 +21,13 @@ import {
   isFirebaseConfigured,
   joinFamilySpace,
   deleteLoyaltyCardDoc,
+  deletePantryDoc,
   pushAlias,
   pushArchiveEntry,
   pushFamilyBudget,
   pushFamilyList,
   pushLoyaltyCard,
+  pushPantryItem,
   pushReceipt,
   pushRememberedItem,
   pushTemplate,
@@ -48,6 +50,7 @@ import {
   getLastPriceInfo,
   priceDeltaVsLast,
 } from '../lib/scoring';
+import { analyzeCartVsEstimate } from '../lib/tripAnalysis';
 import type {
   AiProvider,
   AppSettings,
@@ -58,6 +61,7 @@ import type {
   ItemAlias,
   ListItem,
   LoyaltyCard,
+  PantryItem,
   Receipt,
   ReceiptItem,
   RememberedItem,
@@ -66,6 +70,8 @@ import type {
   Store,
   SyncStatus,
   ThemeMode,
+  TripVarianceSummary,
+  UndoState,
   Unit,
   UserProfile,
 } from '../types';
@@ -85,6 +91,7 @@ interface AppState {
   trips: CompletedTrip[];
   receipts: Receipt[];
   loyaltyCards: LoyaltyCard[];
+  pantry: PantryItem[];
   budgetAmount: number;
   userLocation: GeoPoint | null;
   locationMode: 'gps' | 'city' | 'none';
@@ -95,12 +102,21 @@ interface AppState {
   online: boolean;
   familyUnsub: Unsub | null;
   lastUiError: string | null;
+  undo: UndoState | null;
+  lastTripVariance: TripVarianceSummary | null;
+  pendingPantryOffer: Array<{
+    name: string;
+    quantity: number;
+    unit: Unit;
+    category: Category;
+  }> | null;
 
   getCirka: () => ReturnType<typeof computeCirka>;
   getEstimates: (forAllItems?: boolean) => ReturnType<typeof buildStoreEstimates>;
   getLastPrice: (itemName: string) => ReturnType<typeof getLastPriceInfo>;
   getMonthSpend: () => number;
   getArchiveForItem: (itemKey: string) => ArchiveEntry[];
+  getPantryItem: (itemName: string) => PantryItem | undefined;
   familyCode: () => string | undefined;
 
   setTheme: (theme: ThemeMode) => void;
@@ -165,8 +181,28 @@ interface AppState {
       unit?: Unit;
     },
   ) => Promise<void>;
-  finishShopping: () => void;
+  finishShopping: () => TripVarianceSummary | null;
   addAllFromReceipt: (receiptId: string) => number;
+  applyPendingPantryOffer: (selectedNames?: string[]) => void;
+  dismissPendingPantryOffer: () => void;
+  clearTripVariance: () => void;
+
+  upsertPantryItem: (input: {
+    name: string;
+    quantity: number;
+    unit: Unit;
+    category: Category;
+    expiresAt?: string;
+    note?: string;
+    id?: string;
+    /** Saberi na postojeću količinu (npr. nakon kupovine) */
+    mergeQuantity?: boolean;
+  }) => void;
+  adjustPantryQuantity: (id: string, delta: number) => void;
+  deletePantryItem: (id: string) => void;
+
+  performUndo: () => void;
+  clearUndo: () => void;
 
   saveReceipt: (input: {
     storeId: string;
@@ -291,6 +327,7 @@ export const useAppStore = create<AppState>()(
       trips: [],
       receipts: [],
       loyaltyCards: [],
+      pantry: [],
       budgetAmount: 400,
       userLocation: cityFallbackLocation('Sarajevo'),
       locationMode: 'city',
@@ -301,6 +338,9 @@ export const useAppStore = create<AppState>()(
       online: typeof navigator !== 'undefined' ? navigator.onLine : true,
       familyUnsub: null,
       lastUiError: null,
+      undo: null,
+      lastTripVariance: null,
+      pendingPantryOffer: null,
 
       familyCode: () => get().user?.familyCode || get().list.shareCode,
 
@@ -325,7 +365,13 @@ export const useAppStore = create<AppState>()(
         return buildStoreEstimates(stores, ids, items, archive, userLocation);
       },
 
-      getLastPrice: (itemName) => getLastPriceInfo(get().archive, itemName),
+      getLastPrice: (itemName) =>
+        getLastPriceInfo(get().archive, itemName, get().list.activeStoreId),
+
+      getPantryItem: (itemName) => {
+        const key = normalizeItemKey(itemName);
+        return get().pantry.find((p) => p.itemKey === key && p.quantity > 0);
+      },
 
       getMonthSpend: () => {
         const key = monthKey();
@@ -396,6 +442,73 @@ export const useAppStore = create<AppState>()(
       setUiError: (message) => set({ lastUiError: message }),
       setKeepScreenOn: (value) =>
         set((s) => ({ settings: normalizeSettings({ ...s.settings, keepScreenOn: value }) })),
+      clearUndo: () => set({ undo: null }),
+      clearTripVariance: () => set({ lastTripVariance: null }),
+      dismissPendingPantryOffer: () => set({ pendingPantryOffer: null }),
+
+      performUndo: () => {
+        const u = get().undo;
+        if (!u) return;
+        const { payload } = u;
+        if (payload.kind === 'listItem') {
+          const items = [...get().list.items];
+          items.splice(payload.index, 0, payload.item);
+          const updated = {
+            ...get().list,
+            items,
+            updatedAt: new Date().toISOString(),
+          };
+          set({ list: updated, undo: null });
+          void syncList(get, updated);
+          return;
+        }
+        if (payload.kind === 'receipt') {
+          set((s) => ({
+            receipts: [payload.receipt, ...s.receipts.filter((r) => r.id !== payload.receipt.id)],
+            archive: [
+              ...payload.archive,
+              ...s.archive.filter((a) => a.receiptId !== payload.receipt.id),
+            ],
+            trips: [
+              ...payload.trips,
+              ...s.trips.filter((t) => t.receiptId !== payload.receipt.id),
+            ],
+            undo: null,
+          }));
+          const code = codeOf(get);
+          if (code && get().user?.provider !== 'demo') {
+            void pushReceipt(code, payload.receipt);
+            for (const a of payload.archive) void pushArchiveEntry(code, a);
+            for (const t of payload.trips) void pushTrip(code, t);
+          }
+          return;
+        }
+        if (payload.kind === 'finish') {
+          set((s) => ({
+            trips: s.trips.filter((t) => t.id !== payload.trip.id),
+            list: {
+              ...payload.listWithoutBought,
+              items: [...payload.restoredItems, ...payload.listWithoutBought.items],
+              updatedAt: new Date().toISOString(),
+            },
+            undo: null,
+            lastTripVariance: null,
+            pendingPantryOffer: null,
+          }));
+          void syncList(get, get().list);
+          const code = codeOf(get);
+          if (code && get().user?.provider !== 'demo') void deleteTripDoc(code, payload.trip.id);
+          return;
+        }
+        if (payload.kind === 'pantryDelete') {
+          set((s) => ({
+            pantry: [payload.item, ...s.pantry.filter((p) => p.id !== payload.item.id)],
+            undo: null,
+          }));
+          const code = codeOf(get);
+          if (code && get().user?.provider !== 'demo') void pushPantryItem(code, payload.item);
+        }
+      },
 
       loginEmail: async (email, password) => {
         set({ authError: null });
@@ -455,6 +568,10 @@ export const useAppStore = create<AppState>()(
           templates: [],
           remembered: [],
           loyaltyCards: [],
+          pantry: [],
+          undo: null,
+          pendingPantryOffer: null,
+          lastTripVariance: null,
         });
       },
 
@@ -476,6 +593,7 @@ export const useAppStore = create<AppState>()(
           aliases: [],
           templates: [],
           remembered: [],
+          pantry: [],
           familyUnsub: null,
           syncStatus: 'local',
           authReady: true,
@@ -747,12 +865,24 @@ export const useAppStore = create<AppState>()(
       },
 
       removeListItem: (id) => {
+        const list = get().list;
+        const index = list.items.findIndex((it) => it.id === id);
+        const item = list.items[index];
+        if (!item || index < 0) return;
         const updated = {
-          ...get().list,
-          items: get().list.items.filter((it) => it.id !== id),
+          ...list,
+          items: list.items.filter((it) => it.id !== id),
           updatedAt: new Date().toISOString(),
         };
-        set({ list: updated });
+        set({
+          list: updated,
+          undo: {
+            id: uid('undo'),
+            message: `Uklonjeno: ${item.name}`,
+            payload: { kind: 'listItem', item, index },
+            createdAt: Date.now(),
+          },
+        });
         void syncList(get, updated);
       },
 
@@ -870,10 +1000,30 @@ export const useAppStore = create<AppState>()(
       },
 
       finishShopping: () => {
-        const { list, stores, trips } = get();
+        const { list, stores, trips, archive } = get();
         const store = stores.find((s) => s.id === list.activeStoreId);
         const bought = list.items.filter((i) => i.checked && i.unitPrice != null);
-        if (!bought.length) return;
+        if (!bought.length) return null;
+
+        // Arhiva bez trenutnih cart unosa za procjenu (zadnji prije ove kupovine)
+        const archiveForEstimate = archive.filter(
+          (a) =>
+            !(
+              a.source === 'cart' &&
+              bought.some(
+                (b) =>
+                  normalizeItemKey(b.name) === a.itemKey &&
+                  b.unitPrice != null &&
+                  Math.abs(a.unitPrice - b.unitPrice) < 0.001 &&
+                  Math.abs(a.quantity - b.quantity) < 0.001,
+              )
+            ),
+        );
+        const variance = analyzeCartVsEstimate(
+          bought,
+          archiveForEstimate,
+          list.activeStoreId,
+        );
 
         const trip: CompletedTrip = {
           id: uid('trip'),
@@ -897,10 +1047,115 @@ export const useAppStore = create<AppState>()(
           updatedAt: new Date().toISOString(),
         };
 
-        set({ trips: [trip, ...trips], list: updated });
+        set({
+          trips: [trip, ...trips],
+          list: updated,
+          lastTripVariance: variance,
+          pendingPantryOffer: bought.map((i) => ({
+            name: i.name,
+            quantity: i.quantity,
+            unit: i.unit,
+            category: i.category,
+          })),
+          undo: {
+            id: uid('undo'),
+            message: 'Kupovina završena',
+            payload: {
+              kind: 'finish',
+              trip,
+              restoredItems: bought,
+              listWithoutBought: updated,
+            },
+            createdAt: Date.now(),
+          },
+        });
         void syncList(get, updated);
         const code = codeOf(get);
         if (code && get().user?.provider !== 'demo') void pushTrip(code, trip);
+        return variance;
+      },
+
+      applyPendingPantryOffer: (selectedNames) => {
+        const offer = get().pendingPantryOffer;
+        if (!offer) return;
+        const allow = selectedNames
+          ? new Set(selectedNames.map((n) => normalizeItemKey(n)))
+          : null;
+        for (const row of offer) {
+          if (allow && !allow.has(normalizeItemKey(row.name))) continue;
+          get().upsertPantryItem({
+            name: row.name,
+            quantity: row.quantity,
+            unit: row.unit,
+            category: row.category,
+            mergeQuantity: true,
+          });
+        }
+        set({ pendingPantryOffer: null });
+      },
+
+      upsertPantryItem: (input) => {
+        const key = normalizeItemKey(input.name);
+        const existing =
+          (input.id ? get().pantry.find((p) => p.id === input.id) : undefined) ??
+          get().pantry.find((p) => p.itemKey === key);
+        const item: PantryItem = {
+          id: existing?.id ?? input.id ?? uid('pantry'),
+          name: input.name.trim(),
+          itemKey: key,
+          quantity: input.quantity,
+          unit: input.unit,
+          category: input.category,
+          expiresAt: input.expiresAt || undefined,
+          note: input.note,
+          updatedAt: new Date().toISOString(),
+        };
+        if (existing && input.mergeQuantity) {
+          item.quantity = Math.round((existing.quantity + input.quantity) * 1000) / 1000;
+          if (!input.expiresAt) item.expiresAt = existing.expiresAt;
+        } else if (existing && !input.expiresAt) {
+          item.expiresAt = input.expiresAt !== undefined ? input.expiresAt : existing.expiresAt;
+        }
+        set((s) => ({
+          pantry: [item, ...s.pantry.filter((p) => p.id !== item.id)],
+        }));
+        const code = codeOf(get);
+        if (code && get().user?.provider !== 'demo') void pushPantryItem(code, item);
+      },
+
+      adjustPantryQuantity: (id, delta) => {
+        const item = get().pantry.find((p) => p.id === id);
+        if (!item) return;
+        const quantity = Math.max(0, Math.round((item.quantity + delta) * 1000) / 1000);
+        if (quantity <= 0) {
+          get().deletePantryItem(id);
+          return;
+        }
+        get().upsertPantryItem({
+          id,
+          name: item.name,
+          quantity,
+          unit: item.unit,
+          category: item.category,
+          expiresAt: item.expiresAt,
+          note: item.note,
+        });
+      },
+
+      deletePantryItem: (id) => {
+        const item = get().pantry.find((p) => p.id === id);
+        if (!item) return;
+        set((s) => ({
+          pantry: s.pantry.filter((p) => p.id !== id),
+          undo: {
+            id: uid('undo'),
+            message: `Obrisano iz špajza: ${item.name}`,
+            payload: { kind: 'pantryDelete', item },
+            createdAt: Date.now(),
+          },
+        }));
+        const code = codeOf(get);
+        if (code && get().user?.provider !== 'demo') void deletePantryDoc(code, id);
       },
 
       saveReceipt: async (input) => {
@@ -971,12 +1226,25 @@ export const useAppStore = create<AppState>()(
       },
 
       deleteReceipt: async (receiptId) => {
+        const receipt = get().receipts.find((r) => r.id === receiptId);
         const linkedArchive = get().archive.filter((a) => a.receiptId === receiptId);
         const linkedTrips = get().trips.filter((t) => t.receiptId === receiptId);
+        if (!receipt) return;
         set((s) => ({
           receipts: s.receipts.filter((r) => r.id !== receiptId),
           archive: s.archive.filter((a) => a.receiptId !== receiptId),
           trips: s.trips.filter((t) => t.receiptId !== receiptId),
+          undo: {
+            id: uid('undo'),
+            message: `Obrisan račun: ${receipt.storeName}`,
+            payload: {
+              kind: 'receipt',
+              receipt,
+              archive: linkedArchive,
+              trips: linkedTrips,
+            },
+            createdAt: Date.now(),
+          },
         }));
         const code = codeOf(get);
         if (code && get().user?.provider !== 'demo') {
@@ -1400,6 +1668,7 @@ export const useAppStore = create<AppState>()(
             if (patch.templates) next.templates = patch.templates as ShoppingTemplate[];
             if (patch.trips) next.trips = patch.trips as CompletedTrip[];
             if (patch.loyalty) next.loyaltyCards = patch.loyalty as LoyaltyCard[];
+            if (patch.pantry) next.pantry = patch.pantry as PantryItem[];
             return next;
           });
         });
@@ -1484,6 +1753,7 @@ export const useAppStore = create<AppState>()(
         trips: s.trips,
         receipts: s.receipts,
         loyaltyCards: s.loyaltyCards,
+        pantry: s.pantry,
         budgetAmount: s.budgetAmount,
         user: s.user?.provider === 'demo' ? s.user : null,
       }),
@@ -1501,10 +1771,14 @@ export const useAppStore = create<AppState>()(
           list,
           authReady: false,
           familyUnsub: null,
+          undo: null,
+          pendingPantryOffer: null,
+          lastTripVariance: null,
           settings: normalizeSettings(p.settings ?? current.settings),
           aliases: p.aliases ?? [],
           templates: p.templates ?? [],
           loyaltyCards: p.loyaltyCards ?? [],
+          pantry: p.pantry ?? [],
         };
       },
     },

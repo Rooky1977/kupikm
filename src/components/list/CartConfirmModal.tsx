@@ -137,13 +137,23 @@ export function CartConfirmModal() {
             </div>
             <div className="muted" style={{ fontSize: '0.75rem' }}>
               {formatDateTime(last.recordedAt)}
-              {last.lowestPrice != null && (
-                <>
-                  {' '}
-                  · najniže {formatKm(last.lowestPrice)} ({last.lowestStoreName})
-                </>
-              )}
             </div>
+            {last.activeStorePrice != null && (
+              <div style={{ fontSize: '0.88rem', marginTop: '0.35rem' }}>
+                U aktivnoj radnji: <strong>{formatKm(last.activeStorePrice)}</strong>
+                {last.activeStoreName ? ` (${last.activeStoreName})` : ''}
+              </div>
+            )}
+            {last.lowestPrice != null && (
+              <div style={{ fontSize: '0.88rem', marginTop: '0.25rem' }}>
+                Najbolja cijena ikad:{' '}
+                <strong className="badge badge-best" style={{ display: 'inline' }}>
+                  {formatKm(last.lowestPrice)}
+                </strong>{' '}
+                u {last.lowestStoreName}
+                {last.lowestRecordedAt ? ` · ${formatDateTime(last.lowestRecordedAt)}` : ''}
+              </div>
+            )}
           </div>
         )}
 

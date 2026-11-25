@@ -6,6 +6,7 @@ import { ArchivePage } from './pages/ArchivePage';
 import { BudgetPage } from './pages/BudgetPage';
 import { ListPage } from './pages/ListPage';
 import { LoginPage } from './pages/LoginPage';
+import { PantryPage } from './pages/PantryPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { StoresPage } from './pages/StoresPage';
 import { useAppStore } from './store/useAppStore';
@@ -49,6 +50,7 @@ export default function App() {
               <Route path="radnje" element={<StoresPage />} />
               <Route path="arhiva" element={<ArchivePage />} />
               <Route path="historija" element={<Navigate to="/arhiva" replace />} />
+              <Route path="spajz" element={<PantryPage />} />
               <Route path="budzet" element={<BudgetPage />} />
               <Route path="podesavanja" element={<SettingsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />

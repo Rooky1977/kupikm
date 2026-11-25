@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { isBarcodeDetectorSupported, openBarcodeCamera, scanBarcodeFromVideo } from '../../lib/barcode';
 import { searchSuggestions } from '../../lib/catalogSearch';
+import { findDedupSuggestions } from '../../lib/dedup';
 import { parseVoiceItems } from '../../lib/frequentItems';
 import { formatKm } from '../../lib/format';
+import { findPantryMatch, pantryWarningText } from '../../lib/pantry';
 import { isVoiceSupported, startVoiceCapture } from '../../lib/voiceInput';
 import { useAppStore } from '../../store/useAppStore';
 import { CATEGORY_LABELS, UNIT_LABELS, type Category, type Unit } from '../../types';
 
 export function SmartAdd() {
   const remembered = useAppStore((s) => s.remembered);
+  const archive = useAppStore((s) => s.archive);
+  const pantry = useAppStore((s) => s.pantry);
   const addFromSuggestion = useAppStore((s) => s.addFromSuggestion);
   const addManyByNames = useAppStore((s) => s.addManyByNames);
   const rememberCustomItem = useAppStore((s) => s.rememberCustomItem);
@@ -34,6 +38,19 @@ export function SmartAdd() {
   const suggestions = useMemo(
     () => searchSuggestions(query, remembered, 12),
     [query, remembered],
+  );
+
+  const dedup = useMemo(
+    () =>
+      query.trim().length >= 2
+        ? findDedupSuggestions(query.trim(), { archive, remembered, pantry, limit: 4 })
+        : [],
+    [query, archive, remembered, pantry],
+  );
+
+  const pantryHit = useMemo(
+    () => (query.trim() ? findPantryMatch(pantry, query.trim()) : undefined),
+    [query, pantry],
   );
 
   useEffect(() => {
@@ -214,6 +231,35 @@ export function SmartAdd() {
         </div>
       </div>
 
+      {pantryHit && (
+        <div className="pantry-note">
+          Već imaš u špajzu: <strong>{pantryWarningText(pantryHit)}</strong>
+        </div>
+      )}
+
+      {dedup.length > 0 && (
+        <div className="stack" style={{ gap: '0.35rem' }}>
+          <div className="muted" style={{ fontSize: '0.82rem' }}>
+            Sličan artikal već postoji — poveži umjesto duplikata:
+          </div>
+          <div className="chip-row">
+            {dedup.map((d) => (
+              <button
+                key={`${d.source}-${d.name}`}
+                type="button"
+                className="chip active"
+                onClick={() => addSuggestion(d.name, d.unit, d.category, 1, d.catalogId)}
+              >
+                {d.name}
+                <small>
+                  {d.source} · {d.score}%
+                </small>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {listening && (
         <p className="muted" style={{ margin: 0, fontSize: '0.88rem' }}>
           Slušam… reci više namirnica (npr. „mlijeko, hljeb i ulje”). {partial && <em>{partial}</em>}
@@ -257,6 +303,7 @@ export function SmartAdd() {
         <div className="suggest-panel">
           {suggestions.map((s) => {
             const last = getLastPrice(s.label);
+            const stock = findPantryMatch(pantry, s.label);
             return (
               <button
                 key={`${s.source}-${s.id}`}
@@ -270,6 +317,7 @@ export function SmartAdd() {
                     {formatKm(last.unitPrice)} · {last.storeName}
                   </small>
                 )}
+                {stock && <small>špajz: {stock.quantity} {stock.unit}</small>}
               </button>
             );
           })}

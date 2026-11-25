@@ -2,6 +2,7 @@ import type {
   ArchiveEntry,
   ItemAlias,
   LoyaltyCard,
+  PantryItem,
   Receipt,
   RememberedItem,
   ShoppingList,
@@ -364,6 +365,14 @@ export async function deleteLoyaltyCardDoc(code: string, id: string): Promise<vo
   await deleteFamilyDoc(code, 'loyalty', id);
 }
 
+export async function pushPantryItem(code: string, item: PantryItem): Promise<void> {
+  await pushFamilyDoc(code, 'pantry', item.id, item as unknown as Record<string, unknown>);
+}
+
+export async function deletePantryDoc(code: string, id: string): Promise<void> {
+  await deleteFamilyDoc(code, 'pantry', id);
+}
+
 export async function pushTrip(code: string, trip: CompletedTrip): Promise<void> {
   await pushFamilyDoc(code, 'trips', trip.id, trip as unknown as Record<string, unknown>);
 }
@@ -407,6 +416,7 @@ export interface FamilySnapshot {
   templates: ShoppingTemplate[];
   trips: CompletedTrip[];
   loyalty: LoyaltyCard[];
+  pantry: PantryItem[];
 }
 
 export async function subscribeFamily(
@@ -441,6 +451,7 @@ export async function subscribeFamily(
     ['templates', 'templates'],
     ['trips', 'trips'],
     ['loyalty', 'loyalty'],
+    ['pantry', 'pantry'],
   ];
 
   for (const [key, col] of cols) {

@@ -151,6 +151,65 @@ export interface LoyaltyCard {
   createdAt: string;
 }
 
+/** Artikal u kućnim zalihama (Špajz / Rezerva). */
+export interface PantryItem {
+  id: string;
+  name: string;
+  itemKey: string;
+  quantity: number;
+  unit: Unit;
+  category: Category;
+  expiresAt?: string;
+  updatedAt: string;
+  note?: string;
+}
+
+export interface DedupSuggestion {
+  name: string;
+  unit: Unit;
+  category: Category;
+  catalogId?: string;
+  score: number;
+  source: 'katalog' | 'arhiva' | 'zapamćeno' | 'špajz';
+}
+
+export interface TripVarianceLine {
+  name: string;
+  estimated: number;
+  actual: number;
+  delta: number;
+}
+
+export interface TripVarianceSummary {
+  estimatedTotal: number;
+  actualTotal: number;
+  delta: number;
+  topDrivers: TripVarianceLine[];
+}
+
+export type UndoPayload =
+  | { kind: 'listItem'; item: ListItem; index: number }
+  | {
+      kind: 'receipt';
+      receipt: Receipt;
+      archive: ArchiveEntry[];
+      trips: CompletedTrip[];
+    }
+  | {
+      kind: 'finish';
+      trip: CompletedTrip;
+      restoredItems: ListItem[];
+      listWithoutBought: ShoppingList;
+    }
+  | { kind: 'pantryDelete'; item: PantryItem };
+
+export interface UndoState {
+  id: string;
+  message: string;
+  payload: UndoPayload;
+  createdAt: number;
+}
+
 export interface CompletedTrip {
   id: string;
   date: string;
@@ -279,6 +338,11 @@ export interface LastPriceInfo {
   isLowest: boolean;
   lowestPrice?: number;
   lowestStoreName?: string;
+  lowestRecordedAt?: string;
+  /** Zadnja cijena u aktivnoj radnji (ako je poznata) */
+  activeStorePrice?: number;
+  activeStoreName?: string;
+  activeStoreRecordedAt?: string;
 }
 
 export interface CirkaSummary {

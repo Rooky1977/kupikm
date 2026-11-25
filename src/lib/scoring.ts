@@ -24,6 +24,7 @@ export function latestArchivePrice(
 export function getLastPriceInfo(
   archive: ArchiveEntry[],
   itemName: string,
+  activeStoreId?: string,
 ): LastPriceInfo | null {
   const key = normalizeItemKey(itemName);
   const all = archive
@@ -33,6 +34,9 @@ export function getLastPriceInfo(
 
   const last = all[0];
   const lowest = [...all].sort((a, b) => a.unitPrice - b.unitPrice)[0];
+  const active = activeStoreId
+    ? all.find((a) => a.storeId === activeStoreId)
+    : undefined;
 
   return {
     unitPrice: last.unitPrice,
@@ -42,6 +46,10 @@ export function getLastPriceInfo(
     isLowest: last.id === lowest.id,
     lowestPrice: lowest.unitPrice,
     lowestStoreName: lowest.storeName,
+    lowestRecordedAt: lowest.recordedAt,
+    activeStorePrice: active?.unitPrice,
+    activeStoreName: active?.storeName,
+    activeStoreRecordedAt: active?.recordedAt,
   };
 }
 

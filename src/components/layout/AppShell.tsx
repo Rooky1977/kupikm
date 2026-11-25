@@ -3,14 +3,16 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { formatKm } from '../../lib/format';
 import { useAppStore } from '../../store/useAppStore';
 import { CirkaStrip } from './CirkaStrip';
-import { IconBudget, IconHistory, IconList, IconSettings, IconStore } from './Icons';
+import { IconBudget, IconHistory, IconList, IconPantry, IconSettings, IconStore } from './Icons';
 import { PullUpdateButton, UpdateBanner } from './UpdateBanner';
 import { CartConfirmModal } from '../list/CartConfirmModal';
+import { UndoToast } from './UndoToast';
 
 const links = [
   { to: '/', label: 'Spisak', icon: <IconList />, end: true },
   { to: '/radnje', label: 'Radnje', icon: <IconStore /> },
   { to: '/arhiva', label: 'Arhiva', icon: <IconHistory /> },
+  { to: '/spajz', label: 'Špajz', icon: <IconPantry /> },
   { to: '/budzet', label: 'Budžet', icon: <IconBudget /> },
 ];
 
@@ -160,6 +162,7 @@ export function AppShell() {
       </nav>
 
       <CartConfirmModal />
+      <UndoToast />
     </div>
   );
 }

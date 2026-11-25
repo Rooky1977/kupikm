@@ -9,8 +9,10 @@ import {
   toReceiptItems,
 } from '../lib/aiParse';
 import { suggestCatalogMatch, topCatalogSuggestions } from '../lib/aliases';
+import { findDedupSuggestions } from '../lib/dedup';
 import { formatDateTime, formatKm, normalizeItemKey } from '../lib/format';
 import { isSuperPrice, itemStats } from '../lib/scoring';
+import { analyzeReceiptVsEstimate } from '../lib/tripAnalysis';
 import { useAppStore } from '../store/useAppStore';
 import type { Category, ReceiptItem, Unit } from '../types';
 import { UNIT_LABELS } from '../types';
@@ -42,6 +44,7 @@ export function ArchivePage() {
   const saveAlias = useAppStore((s) => s.saveAlias);
   const addAllFromReceipt = useAppStore((s) => s.addAllFromReceipt);
   const setReceiptExtraordinary = useAppStore((s) => s.setReceiptExtraordinary);
+  const pantry = useAppStore((s) => s.pantry);
 
   const [tab, setTab] = useState<'racuni' | 'artikli' | 'katalog'>('racuni');
   const [query, setQuery] = useState('');
@@ -277,6 +280,7 @@ export function ArchivePage() {
     }
     const totalNum =
       Number(total.replace(',', '.')) || items.reduce((s, i) => s + i.lineTotal, 0);
+    const variance = analyzeReceiptVsEstimate(items, archive, store.id, totalNum);
     await saveReceipt({
       storeId: store.id,
       storeName: store.name,
@@ -291,7 +295,15 @@ export function ArchivePage() {
     setDraftItems([]);
     setImageDataUrl(undefined);
     setReceiptExtraordinaryDraft(false);
-    setMsg('Račun sačuvan. Arhiva artikala i cijene su ažurirane. Budžet je preračunat.');
+    const drivers =
+      variance.topDrivers.length > 0
+        ? ` Najveći uticaj: ${variance.topDrivers
+            .map((d) => `${d.name} (${d.delta > 0 ? '+' : ''}${d.delta.toFixed(2)} KM)`)
+            .join(', ')}.`
+        : '';
+    setMsg(
+      `Račun sačuvan. Procjena ${variance.estimatedTotal.toFixed(2)} KM · stvarno ${variance.actualTotal.toFixed(2)} KM · razlika ${variance.delta > 0 ? '+' : ''}${variance.delta.toFixed(2)} KM.${drivers}`,
+    );
     setTab('racuni');
   };
 
@@ -423,12 +435,39 @@ export function ArchivePage() {
             )}
             {draftItems.map((it, idx) => {
               const suggestions = topCatalogSuggestions(it.rawName, 6);
+              const nearDupes = findDedupSuggestions(it.name || it.rawName, {
+                archive,
+                remembered,
+                pantry,
+                limit: 3,
+              });
               return (
                 <div key={idx} className="store-card stack" style={{ gap: '0.45rem' }}>
                   <div className="muted" style={{ fontSize: '0.8rem' }}>
                     Sa računa: <code>{it.rawName}</code>
                     {it.mapped && <span className="badge badge-best" style={{ marginLeft: 8 }}>Povezano</span>}
                   </div>
+                  {nearDupes.length > 0 && !it.mapped && (
+                    <div className="chip-row">
+                      {nearDupes.map((d) => (
+                        <button
+                          key={d.name}
+                          type="button"
+                          className="chip active"
+                          onClick={() =>
+                            applyCatalogChoice(idx, {
+                              label: d.name,
+                              unit: d.unit,
+                              category: d.category,
+                              id: d.catalogId,
+                            })
+                          }
+                        >
+                          Veži: {d.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div className="form-row-2">
                     <input
                       className="input"

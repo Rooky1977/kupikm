@@ -27,6 +27,16 @@ export function normalizeItemKey(name: string): string {
     .replace(/\s+/g, ' ');
 }
 
+/** Jača normalizacija za uparivanje / deduplikaciju. */
+export function normalizeForMatch(name: string): string {
+  return normalizeItemKey(name)
+    .replace(/\b(\d+[.,]?\d*)\s*(kg|g|l|ml|kom|pak|pet|cl|dl)\b/g, ' ')
+    .replace(/\b(tetrapak|tetra|tp|pet|pvc|kesa|kutija|flasa|flaša)\b/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function uid(prefix = 'id'): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 }

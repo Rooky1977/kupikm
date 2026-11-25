@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { bs } from 'date-fns/locale';
 import { CATEGORY_LABELS, type Category } from '../types';
 import { formatKm, formatMonthLabel, monthKey } from '../lib/format';
+import { topSpendItems } from '../lib/tripAnalysis';
 import { useAppStore } from '../store/useAppStore';
 
 export function BudgetPage() {
@@ -40,6 +41,7 @@ export function BudgetPage() {
     }
   }
   const storeRows = Object.entries(storeStats).sort((a, b) => b[1] - a[1]);
+  const topItems = topSpendItems(archive, 5, key);
 
   const onSave = (e: FormEvent) => {
     e.preventDefault();
@@ -116,6 +118,23 @@ export function BudgetPage() {
           </div>
         </form>
       </div>
+
+      <section className="card stack" style={{ marginTop: '0.85rem' }}>
+        <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Top 5 stavki po ukupnoj potrošnji</h2>
+        {!topItems.length && <p className="muted" style={{ margin: 0 }}>Nema podataka ovaj mjesec.</p>}
+        {topItems.map((row, i) => (
+          <div key={row.name} className="row" style={{ justifyContent: 'space-between' }}>
+            <span>
+              <strong style={{ marginRight: '0.35rem' }}>{i + 1}.</strong>
+              {row.name}
+              <span className="muted" style={{ marginLeft: '0.35rem', fontSize: '0.85rem' }}>
+                ({row.count}×)
+              </span>
+            </span>
+            <strong>{formatKm(row.total)}</strong>
+          </div>
+        ))}
+      </section>
 
       <div className="desktop-layout" style={{ marginTop: '0.85rem' }}>
         <section className="card stack">
