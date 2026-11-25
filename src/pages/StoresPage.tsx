@@ -3,11 +3,13 @@ import { IconStar } from '../components/layout/Icons';
 import { BIH_CITIES } from '../types';
 import { formatDistance, formatKm } from '../lib/format';
 import { haversineKm } from '../lib/geolocation';
+import { computeSplitCart } from '../lib/splitCart';
 import { useAppStore } from '../store/useAppStore';
 
 export function StoresPage() {
   const stores = useAppStore((s) => s.stores);
   const list = useAppStore((s) => s.list);
+  const archive = useAppStore((s) => s.archive);
   const userLocation = useAppStore((s) => s.userLocation);
   const locationMode = useAppStore((s) => s.locationMode);
   const locationError = useAppStore((s) => s.locationError);
@@ -37,6 +39,18 @@ export function StoresPage() {
   );
 
   const estimates = getEstimates(true);
+  const split = useMemo(
+    () =>
+      computeSplitCart(
+        list.items,
+        stores,
+        list.selectedStoreIds.length >= 2
+          ? list.selectedStoreIds
+          : estimates.map((e) => e.storeId),
+        archive,
+      ),
+    [list.items, list.selectedStoreIds, stores, archive, estimates],
+  );
 
   const onAdd = (e: FormEvent) => {
     e.preventDefault();
@@ -171,22 +185,42 @@ export function StoresPage() {
           })}
         </section>
 
-        <aside className="card stack">
-          <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Sažetak poređenja</h2>
-          {estimates.map((est) => {
-            const store = stores.find((s) => s.id === est.storeId);
-            return (
-              <div key={est.storeId} className={`store-card${est.isCheapest ? ' best' : ''}`}>
-                <strong>{store?.name}</strong>
-                <div className="price-big">{est.pricedCount ? formatKm(est.total) : 'Nema cijena'}</div>
-                <div className="chip-row">
-                  {est.isCheapest && <span className="badge badge-action">NAJJEFTINIJE</span>}
-                  {est.isClosest && <span className="badge badge-best">Najbliže</span>}
-                  {est.isBestChoice && <span className="badge">Najbolji omjer</span>}
+        <aside className="stack">
+          <div className="card stack">
+            <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Sažetak poređenja</h2>
+            {estimates.map((est) => {
+              const store = stores.find((s) => s.id === est.storeId);
+              return (
+                <div key={est.storeId} className={`store-card${est.isCheapest ? ' best' : ''}`}>
+                  <strong>{store?.name}</strong>
+                  <div className="price-big">{est.pricedCount ? formatKm(est.total) : 'Nema cijena'}</div>
+                  <div className="chip-row">
+                    {est.isCheapest && <span className="badge badge-action">NAJJEFTINIJE</span>}
+                    {est.isClosest && <span className="badge badge-best">Najbliže</span>}
+                    {est.isBestChoice && <span className="badge">Najbolji omjer</span>}
+                  </div>
                 </div>
+              );
+            })}
+          </div>
+
+          {split && (
+            <div className="card stack split-card">
+              <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Optimalna kombinacija (2 radnje)</h2>
+                <span className="badge badge-super">Ušteda {formatKm(split.savings)}</span>
               </div>
-            );
-          })}
+              <p className="muted" style={{ margin: 0, fontSize: '0.88rem' }}>
+                Najjeftinije artikle uzmi u <strong>{split.storeAName}</strong>, ostatak u{' '}
+                <strong>{split.storeBName}</strong> — ukupno {formatKm(split.combinedTotal)} umjesto{' '}
+                {formatKm(split.bestSingleTotal)}.
+              </p>
+              <div className="muted" style={{ fontSize: '0.85rem' }}>
+                {split.storeAName}: {split.storeAItems.length} stavki · {split.storeBName}:{' '}
+                {split.storeBItems.length} stavki
+              </div>
+            </div>
+          )}
         </aside>
       </div>
     </div>

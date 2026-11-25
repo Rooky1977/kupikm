@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { PullUpdateButton } from '../components/layout/UpdateBanner';
+import { exportArchiveCsv, exportArchiveJson } from '../lib/exportData';
 import type { AiProvider, ThemeMode } from '../types';
 import { useAppStore } from '../store/useAppStore';
 
@@ -7,24 +8,24 @@ export function SettingsPage() {
   const settings = useAppStore((s) => s.settings);
   const user = useAppStore((s) => s.user);
   const list = useAppStore((s) => s.list);
+  const archive = useAppStore((s) => s.archive);
+  const receipts = useAppStore((s) => s.receipts);
   const syncStatus = useAppStore((s) => s.syncStatus);
   const setTheme = useAppStore((s) => s.setTheme);
   const setAiSettings = useAppStore((s) => s.setAiSettings);
-  const loginEmail = useAppStore((s) => s.loginEmail);
-  const loginGoogle = useAppStore((s) => s.loginGoogle);
   const logout = useAppStore((s) => s.logout);
-  const continueAsDemo = useAppStore((s) => s.continueAsDemo);
-  const joinSharedList = useAppStore((s) => s.joinSharedList);
+  const createFamily = useAppStore((s) => s.createFamily);
+  const joinFamily = useAppStore((s) => s.joinFamily);
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [geminiKey, setGeminiKey] = useState(settings.geminiApiKey);
   const [groqKey, setGroqKey] = useState(settings.groqApiKey);
   const [provider, setProvider] = useState<AiProvider>(settings.aiProvider);
   const [shareCode, setShareCode] = useState('');
   const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
 
   const hasFreeKey = Boolean(settings.geminiApiKey || settings.groqApiKey);
+  const familyCode = user?.familyCode || list.shareCode;
 
   return (
     <div className="stack">
@@ -32,7 +33,10 @@ export function SettingsPage() {
         <div>
           <h1>Podešavanja</h1>
           <p>
-            {settings.useMockData ? 'Lokalni / demo režim' : 'Firebase povezan'} · status: {syncStatus}
+            {settings.useMockData || user?.provider === 'demo'
+              ? 'Lokalni / demo režim'
+              : 'Firebase povezan'}{' '}
+            · status: {syncStatus}
           </p>
         </div>
       </div>
@@ -69,59 +73,79 @@ export function SettingsPage() {
 
       <section className="card stack">
         <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Nalog</h2>
-        {user ? (
+        {user && (
           <>
-            <p style={{ margin: 0 }}>
-              {user.displayName} ({user.email}) · {user.provider}
-            </p>
-            <div className="row">
-              <button type="button" className="btn btn-ghost" onClick={() => void logout()}>
-                Odjavi se
-              </button>
-              <button type="button" className="btn btn-ghost" onClick={continueAsDemo}>
-                Demo nalog
-              </button>
+            <div className="row" style={{ gap: '0.75rem' }}>
+              {user.photoURL ? (
+                <img src={user.photoURL} alt="" className="user-avatar" style={{ width: 48, height: 48 }} />
+              ) : (
+                <span className="user-avatar initials" style={{ width: 48, height: 48, fontSize: '1rem' }}>
+                  {(user.displayName || 'K')
+                    .split(/\s+/)
+                    .slice(0, 2)
+                    .map((p) => p[0]?.toUpperCase())
+                    .join('')}
+                </span>
+              )}
+              <div>
+                <strong>{user.displayName}</strong>
+                <div className="muted" style={{ fontSize: '0.9rem' }}>
+                  {user.email} · {user.provider === 'demo' ? 'demo' : user.provider}
+                </div>
+              </div>
             </div>
+            <button type="button" className="btn btn-ghost" onClick={() => void logout()}>
+              Odjavi se
+            </button>
           </>
-        ) : (
-          <form
-            className="form-grid"
-            onSubmit={(e: FormEvent) => {
-              e.preventDefault();
-              void loginEmail(email, password).then(() => setMsg('Prijava uspješna / demo.'));
-            }}
-          >
-            <label className="label">
-              Email
-              <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            </label>
-            <label className="label">
-              Lozinka
-              <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-            </label>
-            <div className="row" style={{ flexWrap: 'wrap' }}>
-              <button type="submit" className="btn">
-                Prijava
-              </button>
-              <button type="button" className="btn btn-ghost" onClick={() => void loginGoogle()}>
-                Google
-              </button>
-            </div>
-          </form>
         )}
         {msg && <p className="muted" style={{ margin: 0 }}>{msg}</p>}
       </section>
 
       <section className="card stack">
-        <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Dijeljeni spisak (uživo)</h2>
+        <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Porodični prostor</h2>
         <p className="muted" style={{ margin: 0 }}>
-          Trenutni kod: <strong>{list.shareCode}</strong>
+          Članovi dijele isti spisak, arhivu računa, arhivu cijena i mjesečni budžet uživo.
         </p>
+        <p style={{ margin: 0 }}>
+          Trenutni kod: <strong style={{ fontFamily: 'var(--font-brand)', letterSpacing: '0.04em' }}>{familyCode}</strong>
+        </p>
+        <div className="row" style={{ flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              void createFamily()
+                .then((code) => setMsg(`Novi porodični prostor kreiran: ${code}`))
+                .catch((e) => setMsg(e instanceof Error ? e.message : 'Greška'))
+                .finally(() => setBusy(false));
+            }}
+          >
+            Kreiraj novi prostor
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => {
+              void navigator.clipboard?.writeText(familyCode);
+              setMsg('Kod kopiran u međuspremnik.');
+            }}
+          >
+            Kopiraj kod
+          </button>
+        </div>
         <form
           className="form-row-2"
-          onSubmit={(e) => {
+          onSubmit={(e: FormEvent) => {
             e.preventDefault();
-            if (shareCode.trim()) void joinSharedList(shareCode.trim());
+            if (!shareCode.trim()) return;
+            setBusy(true);
+            void joinFamily(shareCode.trim())
+              .then(() => setMsg(`Pridružen porodičnom prostoru ${shareCode.trim().toUpperCase()}.`))
+              .catch((err) => setMsg(err instanceof Error ? err.message : 'Kod nije validan.'))
+              .finally(() => setBusy(false));
           }}
         >
           <input
@@ -130,10 +154,39 @@ export function SettingsPage() {
             onChange={(e) => setShareCode(e.target.value)}
             placeholder="npr. KUPI-7X2M"
           />
-          <button type="submit" className="btn btn-action">
+          <button type="submit" className="btn btn-action" disabled={busy}>
             Pridruži se
           </button>
         </form>
+      </section>
+
+      <section className="card stack">
+        <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Izvoz podataka (Backup)</h2>
+        <p className="muted" style={{ margin: 0 }}>
+          Preuzmi sve račune i cijene na uređaj (CSV ili JSON).
+        </p>
+        <div className="row" style={{ flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn btn-action"
+            onClick={() => {
+              exportArchiveJson(archive, receipts);
+              setMsg('JSON arhiva preuzeta.');
+            }}
+          >
+            Izvezi arhivu (JSON)
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              exportArchiveCsv(archive, receipts);
+              setMsg('CSV arhiva preuzeta.');
+            }}
+          >
+            Izvezi arhivu (CSV)
+          </button>
+        </div>
       </section>
 
       <section className="card stack">

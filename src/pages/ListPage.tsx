@@ -1,13 +1,18 @@
+import { useMemo, useState } from 'react';
 import { SmartAdd } from '../components/list/SmartAdd';
 import { PriceDeltaBadge } from '../components/list/PriceDeltaBadge';
 import { formatDistance, formatKm } from '../lib/format';
 import { haversineKm } from '../lib/geolocation';
+import { isSuperPrice } from '../lib/scoring';
+import { computeSplitCart } from '../lib/splitCart';
 import { useAppStore } from '../store/useAppStore';
 import { CATEGORY_LABELS } from '../types';
 
 export function ListPage() {
   const list = useAppStore((s) => s.list);
   const stores = useAppStore((s) => s.stores);
+  const archive = useAppStore((s) => s.archive);
+  const templates = useAppStore((s) => s.templates);
   const userLocation = useAppStore((s) => s.userLocation);
   const setActiveStore = useAppStore((s) => s.setActiveStore);
   const toggleSelectedStore = useAppStore((s) => s.toggleSelectedStore);
@@ -18,10 +23,28 @@ export function ListPage() {
   const getLastPrice = useAppStore((s) => s.getLastPrice);
   const getEstimates = useAppStore((s) => s.getEstimates);
   const addStore = useAppStore((s) => s.addStore);
+  const saveTemplateFromList = useAppStore((s) => s.saveTemplateFromList);
+  const loadTemplate = useAppStore((s) => s.loadTemplate);
+  const deleteTemplate = useAppStore((s) => s.deleteTemplate);
+
+  const [tplMsg, setTplMsg] = useState('');
 
   const todo = list.items.filter((i) => !i.checked);
   const cart = list.items.filter((i) => i.checked);
   const estimates = getEstimates(true);
+
+  const split = useMemo(
+    () =>
+      computeSplitCart(
+        list.items,
+        stores,
+        list.selectedStoreIds.length >= 2
+          ? list.selectedStoreIds
+          : estimates.map((e) => e.storeId),
+        archive,
+      ),
+    [list.items, list.selectedStoreIds, stores, archive, estimates],
+  );
 
   const nearby = [...stores]
     .map((s) => ({
@@ -105,11 +128,61 @@ export function ListPage() {
           </div>
         </div>
 
+        <div className="card stack">
+          <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
+            <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Brzi šabloni (korpe)</h2>
+            <button
+              type="button"
+              className="btn btn-sm btn-action"
+              disabled={!list.items.length}
+              onClick={() => {
+                const name = window.prompt('Naziv šablona', 'Sedmična kupovina');
+                if (!name?.trim()) return;
+                saveTemplateFromList(name.trim());
+                setTplMsg(`Šablon „${name.trim()}“ sačuvan.`);
+              }}
+            >
+              Sačuvaj trenutni spisak
+            </button>
+          </div>
+          {tplMsg && <p className="muted" style={{ margin: 0 }}>{tplMsg}</p>}
+          {!templates.length && (
+            <p className="muted" style={{ margin: 0, fontSize: '0.9rem' }}>
+              Sačuvaj spisak kao šablon (npr. „Vikendica / Roštilj“) pa ga kasnije učitaj jednim klikom.
+            </p>
+          )}
+          <div className="chip-row">
+            {templates.map((t) => (
+              <div key={t.id} className="row" style={{ gap: '0.25rem' }}>
+                <button
+                  type="button"
+                  className="chip active"
+                  onClick={() => {
+                    loadTemplate(t.id);
+                    setTplMsg(`Učitano ${t.items.length} artikala iz „${t.name}“.`);
+                  }}
+                >
+                  {t.name} ({t.items.length})
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-ghost"
+                  aria-label="Obriši šablon"
+                  onClick={() => deleteTemplate(t.id)}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <SmartAdd />
 
         {todo.length > 0 && <div className="section-title">Za kupiti</div>}
         {todo.map((item) => {
           const last = getLastPrice(item.name);
+          const superDeal = last ? isSuperPrice(archive, item.name, last.unitPrice) : false;
           return (
             <article key={item.id} className="item-row">
               <button
@@ -124,6 +197,7 @@ export function ListPage() {
                 <div style={{ fontWeight: 800, fontSize: '1.02rem' }}>{item.name}</div>
                 <div className="chip-row" style={{ marginTop: '0.3rem' }}>
                   <span className="badge">{CATEGORY_LABELS[item.category]}</span>
+                  {superDeal && <span className="badge badge-super">Super cijena</span>}
                   {last ? (
                     <span className="badge badge-best">
                       {formatKm(last.lowestPrice ?? last.unitPrice)} ·{' '}
@@ -171,6 +245,9 @@ export function ListPage() {
               </div>
               <div style={{ marginTop: '0.35rem' }}>
                 <PriceDeltaBadge delta={item.priceDelta} />
+                {item.unitPrice != null && isSuperPrice(archive, item.name, item.unitPrice) && (
+                  <span className="badge badge-super" style={{ marginLeft: 6 }}>Super cijena</span>
+                )}
               </div>
             </div>
             <span className="badge badge-best">Kupljeno</span>
@@ -213,6 +290,55 @@ export function ListPage() {
             );
           })}
         </div>
+
+        {split && (
+          <div className="card stack split-card">
+            <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
+              <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Optimalna kombinacija (2 radnje)</h2>
+              <span className="badge badge-super">Ušteda {formatKm(split.savings)}</span>
+            </div>
+            <p className="muted" style={{ margin: 0, fontSize: '0.88rem' }}>
+              Umjesto {formatKm(split.bestSingleTotal)} u jednoj radnji, podijeli kupovinu i plati{' '}
+              <strong>{formatKm(split.combinedTotal)}</strong>.
+            </p>
+            <div className="store-card">
+              <strong>{split.storeAName}</strong>
+              <div className="muted" style={{ fontSize: '0.85rem', marginBottom: '0.35rem' }}>
+                {split.storeAItems.length} artikala ·{' '}
+                {formatKm(split.storeAItems.reduce((s, i) => s + i.line, 0))}
+              </div>
+              {split.storeAItems.slice(0, 5).map((i) => (
+                <div key={i.itemId} className="row" style={{ justifyContent: 'space-between', fontSize: '0.88rem' }}>
+                  <span>{i.name}</span>
+                  <span>{formatKm(i.line)}</span>
+                </div>
+              ))}
+              {split.storeAItems.length > 5 && (
+                <div className="muted" style={{ fontSize: '0.8rem' }}>
+                  + još {split.storeAItems.length - 5}
+                </div>
+              )}
+            </div>
+            <div className="store-card">
+              <strong>{split.storeBName}</strong>
+              <div className="muted" style={{ fontSize: '0.85rem', marginBottom: '0.35rem' }}>
+                {split.storeBItems.length} artikala ·{' '}
+                {formatKm(split.storeBItems.reduce((s, i) => s + i.line, 0))}
+              </div>
+              {split.storeBItems.slice(0, 5).map((i) => (
+                <div key={i.itemId} className="row" style={{ justifyContent: 'space-between', fontSize: '0.88rem' }}>
+                  <span>{i.name}</span>
+                  <span>{formatKm(i.line)}</span>
+                </div>
+              ))}
+              {split.storeBItems.length > 5 && (
+                <div className="muted" style={{ fontSize: '0.8rem' }}>
+                  + još {split.storeBItems.length - 5}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="card stack">
           <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Najbliže radnje</h2>

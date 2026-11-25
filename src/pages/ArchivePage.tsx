@@ -8,39 +8,66 @@ import {
   parseReceiptText,
   toReceiptItems,
 } from '../lib/aiParse';
+import { suggestCatalogMatch, topCatalogSuggestions } from '../lib/aliases';
 import { formatDateTime, formatKm, normalizeItemKey } from '../lib/format';
-import { itemStats } from '../lib/scoring';
+import { isSuperPrice, itemStats } from '../lib/scoring';
 import { useAppStore } from '../store/useAppStore';
-import type { ReceiptItem, Unit } from '../types';
+import type { Category, ReceiptItem, Unit } from '../types';
+import { UNIT_LABELS } from '../types';
+
+interface DraftLine extends ReceiptItem {
+  rawName: string;
+  mapped: boolean;
+}
 
 export function ArchivePage() {
   const archive = useAppStore((s) => s.archive);
   const receipts = useAppStore((s) => s.receipts);
   const stores = useAppStore((s) => s.stores);
   const settings = useAppStore((s) => s.settings);
+  const aliases = useAppStore((s) => s.aliases);
+  const remembered = useAppStore((s) => s.remembered);
   const historyItemKey = useAppStore((s) => s.historyItemKey);
   const setHistoryItemKey = useAppStore((s) => s.setHistoryItemKey);
   const saveReceipt = useAppStore((s) => s.saveReceipt);
+  const deleteReceipt = useAppStore((s) => s.deleteReceipt);
+  const updateReceiptItem = useAppStore((s) => s.updateReceiptItem);
+  const deleteReceiptItem = useAppStore((s) => s.deleteReceiptItem);
+  const updateArchiveEntry = useAppStore((s) => s.updateArchiveEntry);
+  const deleteArchiveEntryById = useAppStore((s) => s.deleteArchiveEntryById);
+  const renameArchiveItem = useAppStore((s) => s.renameArchiveItem);
+  const deleteArchiveItemGroup = useAppStore((s) => s.deleteArchiveItemGroup);
+  const renameRememberedItem = useAppStore((s) => s.renameRememberedItem);
+  const deleteRememberedItem = useAppStore((s) => s.deleteRememberedItem);
+  const saveAlias = useAppStore((s) => s.saveAlias);
 
-  const [tab, setTab] = useState<'racuni' | 'artikli'>('racuni');
+  const [tab, setTab] = useState<'racuni' | 'artikli' | 'katalog'>('racuni');
   const [query, setQuery] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [storeId, setStoreId] = useState(stores[0]?.id ?? '');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [text, setText] = useState(
-    'Mlijeko 1L (tetrapak) ........ 1.99\nUlje Floriol 1L ........ 3.89\nVoda 1.5L ........ 0.79',
+    'Mlijeko 1L (tetrapak) ........ 1.99\nULJE FLORIOL 1L PET ........ 3.89\nVoda 1.5L ........ 0.79',
   );
   const [imageDataUrl, setImageDataUrl] = useState<string | undefined>();
-  const [draftItems, setDraftItems] = useState<ReceiptItem[]>([]);
+  const [draftItems, setDraftItems] = useState<DraftLine[]>([]);
   const [total, setTotal] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [selectedReceipt, setSelectedReceipt] = useState<string | null>(null);
+  const [confirmDeleteReceipt, setConfirmDeleteReceipt] = useState(false);
+  const [editArchiveId, setEditArchiveId] = useState<string | null>(null);
+  const [editPrice, setEditPrice] = useState('');
+  const [editQty, setEditQty] = useState('');
+  const [renameName, setRenameName] = useState('');
+  const [editReceiptIdx, setEditReceiptIdx] = useState<number | null>(null);
+  const [editRcptPrice, setEditRcptPrice] = useState('');
+  const [editRcptQty, setEditRcptQty] = useState('');
 
   const grouped = useMemo(() => {
     const map = new Map<
       string,
-      { name: string; key: string; count: number; min: number; max: number; last: string }
+      { name: string; key: string; count: number; min: number; max: number; last: string; lastPrice: number }
     >();
     for (const a of archive) {
       const existing = map.get(a.itemKey);
@@ -52,6 +79,7 @@ export function ArchivePage() {
           min: a.unitPrice,
           max: a.unitPrice,
           last: a.recordedAt,
+          lastPrice: a.unitPrice,
         });
       } else {
         existing.count += 1;
@@ -60,6 +88,7 @@ export function ArchivePage() {
         if (a.recordedAt > existing.last) {
           existing.last = a.recordedAt;
           existing.name = a.itemName;
+          existing.lastPrice = a.unitPrice;
         }
       }
     }
@@ -77,8 +106,22 @@ export function ArchivePage() {
   const stats = historyItemKey ? itemStats(archive, historyItemKey) : null;
   const receiptDetail = receipts.find((r) => r.id === selectedReceipt);
 
+  const mapParsedToDraft = (items: ReceiptItem[]): DraftLine[] =>
+    items.map((it) => {
+      const match = suggestCatalogMatch(it.name, aliases);
+      const mapped = match.fromAlias || match.confidence >= 40;
+      return {
+        ...it,
+        rawName: it.name,
+        name: mapped ? match.suggestedName : it.name,
+        category: mapped ? match.category : it.category,
+        unit: mapped ? match.unit : it.unit,
+        mapped,
+      };
+    });
+
   const applyParsed = (items: ReceiptItem[], parsedTotal?: number, storeName?: string) => {
-    setDraftItems(items);
+    setDraftItems(mapParsedToDraft(items));
     if (parsedTotal != null) setTotal(String(parsedTotal));
     else if (items.length) {
       setTotal(String(items.reduce((s, i) => s + i.lineTotal, 0).toFixed(2)));
@@ -119,7 +162,7 @@ export function ArchivePage() {
       }
       setMsg(
         parsed.items.length
-          ? `Izvučeno ${parsed.items.length} stavki preko: ${describeScanMethod(parsed.method)}. Provjeri i sačuvaj.`
+          ? `Izvučeno ${parsed.items.length} stavki preko: ${describeScanMethod(parsed.method)}. Provjeri povezivanje sa katalogom.`
           : 'Nisu pronađene stavke — dodaj ih ručno ispod (i dalje je besplatno).',
       );
     } catch {
@@ -139,32 +182,80 @@ export function ArchivePage() {
       });
       applyParsed(toReceiptItems(parsed.items), parsed.total, parsed.storeName);
       setMsg(
-        `Pronađeno ${parsed.items.length} stavki (${describeScanMethod(parsed.method)}).`,
+        `Pronađeno ${parsed.items.length} stavki (${describeScanMethod(parsed.method)}). Poveži sa katalogom po potrebi.`,
       );
     } finally {
       setBusy(false);
     }
   };
 
+  const applyCatalogChoice = (
+    idx: number,
+    choice: { label: string; unit: Unit; category: Category; id?: string } | 'new',
+  ) => {
+    setDraftItems((prev) => {
+      const next = [...prev];
+      const line = next[idx];
+      if (!line) return prev;
+      if (choice === 'new') {
+        next[idx] = { ...line, mapped: true, name: line.rawName };
+        void saveAlias({
+          rawName: line.rawName,
+          catalogName: line.rawName,
+          category: line.category,
+          unit: line.unit,
+        });
+        return next;
+      }
+      next[idx] = {
+        ...line,
+        name: choice.label,
+        unit: choice.unit,
+        category: choice.category,
+        mapped: true,
+      };
+      void saveAlias({
+        rawName: line.rawName,
+        catalogName: choice.label,
+        catalogId: choice.id,
+        category: choice.category,
+        unit: choice.unit,
+      });
+      return next;
+    });
+  };
+
   const onSave = async (e: FormEvent) => {
     e.preventDefault();
     const store = stores.find((s) => s.id === storeId);
     if (!store) return;
-    let items = draftItems;
+    let items: ReceiptItem[] = draftItems.map(({ rawName: _r, mapped: _m, ...rest }) => rest);
     if (!items.length && text.trim()) {
-      items = toReceiptItems(
-        (
-          await parseReceiptText(text, {
-            aiProvider: settings.aiProvider,
-            geminiApiKey: settings.geminiApiKey,
-            groqApiKey: settings.groqApiKey,
-          })
-        ).items,
-      );
+      items = mapParsedToDraft(
+        toReceiptItems(
+          (
+            await parseReceiptText(text, {
+              aiProvider: settings.aiProvider,
+              geminiApiKey: settings.geminiApiKey,
+              groqApiKey: settings.groqApiKey,
+            })
+          ).items,
+        ),
+      ).map(({ rawName: _r, mapped: _m, ...rest }) => rest);
     }
     if (!items.length) {
       setMsg('Dodaj barem jednu stavku prije spremanja.');
       return;
+    }
+    for (const d of draftItems) {
+      if (d.rawName && d.name && normalizeItemKey(d.rawName) !== normalizeItemKey(d.name)) {
+        await saveAlias({
+          rawName: d.rawName,
+          catalogName: d.name,
+          category: d.category,
+          unit: d.unit,
+        });
+      }
     }
     const totalNum =
       Number(total.replace(',', '.')) || items.reduce((s, i) => s + i.lineTotal, 0);
@@ -180,7 +271,7 @@ export function ArchivePage() {
     setShowAdd(false);
     setDraftItems([]);
     setImageDataUrl(undefined);
-    setMsg('Račun sačuvan. Arhiva artikala i cijene su ažurirane za sljedeće spiskove.');
+    setMsg('Račun sačuvan. Arhiva artikala i cijene su ažurirane. Budžet je preračunat.');
     setTab('racuni');
   };
 
@@ -188,12 +279,14 @@ export function ArchivePage() {
     setDraftItems((prev) => [
       ...prev,
       {
+        rawName: 'Novi artikal',
         name: 'Novi artikal',
         quantity: 1,
         unit: 'kom' as Unit,
         unitPrice: 0,
         lineTotal: 0,
         category: 'ostalo',
+        mapped: true,
       },
     ]);
   };
@@ -203,7 +296,7 @@ export function ArchivePage() {
       <div className="page-header">
         <div>
           <h1>Arhiva</h1>
-          <p>Računi i historija cijena artikala · skeniranje je besplatno</p>
+          <p>Računi, historija cijena i katalog · skeniranje je besplatno</p>
         </div>
         <button type="button" className="btn btn-action" onClick={() => setShowAdd(true)}>
           Uslikaj / dodaj račun
@@ -224,6 +317,13 @@ export function ArchivePage() {
           onClick={() => setTab('artikli')}
         >
           Arhiva artikala
+        </button>
+        <button
+          type="button"
+          className={`chip${tab === 'katalog' ? ' active' : ''}`}
+          onClick={() => setTab('katalog')}
+        >
+          Moj katalog
         </button>
       </div>
 
@@ -246,7 +346,7 @@ export function ArchivePage() {
           </div>
           <p className="muted" style={{ margin: 0, fontSize: '0.88rem' }}>
             Uslikaj račun — čita se lokalno (Tesseract) ili preko besplatnog Gemini/Groq ključa.
-            Stavke možeš ispraviti prije spremanja. Spremanjem se ažurira Arhiva artikala.
+            Skraćeni nazivi sa fiskalnog računa se automatski povezuju s katalogom (alias mapper).
           </p>
 
           <div className="form-row-2">
@@ -295,69 +395,109 @@ export function ArchivePage() {
           </label>
 
           <div className="stack">
-            <div className="section-title">Stavke za provjeru (naziv · količina · cijena KM)</div>
+            <div className="section-title">Stavke · povezivanje sa katalogom</div>
             {!draftItems.length && (
               <p className="muted" style={{ margin: 0 }}>
                 Još nema izvučenih stavki. Uslikaj račun ili dodaj ručno.
               </p>
             )}
-            {draftItems.map((it, idx) => (
-              <div key={idx} className="form-row-2">
-                <input
-                  className="input"
-                  value={it.name}
-                  aria-label="Naziv artikla"
-                  onChange={(e) => {
-                    const next = [...draftItems];
-                    next[idx] = { ...it, name: e.target.value };
-                    setDraftItems(next);
-                  }}
-                />
-                <div className="row">
-                  <input
-                    className="input"
-                    inputMode="decimal"
-                    style={{ maxWidth: 90 }}
-                    aria-label="Količina"
-                    value={String(it.quantity)}
-                    onChange={(e) => {
-                      const q = Number(e.target.value.replace(',', '.')) || 1;
-                      const next = [...draftItems];
-                      next[idx] = {
-                        ...it,
-                        quantity: q,
-                        lineTotal: Math.round(it.unitPrice * q * 100) / 100,
-                      };
-                      setDraftItems(next);
-                    }}
-                  />
-                  <input
-                    className="input"
-                    inputMode="decimal"
-                    aria-label="Cijena KM"
-                    value={String(it.unitPrice)}
-                    onChange={(e) => {
-                      const p = Number(e.target.value.replace(',', '.')) || 0;
-                      const next = [...draftItems];
-                      next[idx] = {
-                        ...it,
-                        unitPrice: p,
-                        lineTotal: Math.round(p * it.quantity * 100) / 100,
-                      };
-                      setDraftItems(next);
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-ghost"
-                    aria-label="Ukloni stavku"
-                    onClick={() => setDraftItems((prev) => prev.filter((_, i) => i !== idx))}
-                  >
-                    ✕
-                  </button>
+            {draftItems.map((it, idx) => {
+              const suggestions = topCatalogSuggestions(it.rawName, 6);
+              return (
+                <div key={idx} className="store-card stack" style={{ gap: '0.45rem' }}>
+                  <div className="muted" style={{ fontSize: '0.8rem' }}>
+                    Sa računa: <code>{it.rawName}</code>
+                    {it.mapped && <span className="badge badge-best" style={{ marginLeft: 8 }}>Povezano</span>}
+                  </div>
+                  <div className="form-row-2">
+                    <input
+                      className="input"
+                      value={it.name}
+                      aria-label="Naziv artikla"
+                      onChange={(e) => {
+                        const next = [...draftItems];
+                        next[idx] = { ...it, name: e.target.value, mapped: true };
+                        setDraftItems(next);
+                      }}
+                    />
+                    <div className="row">
+                      <input
+                        className="input"
+                        inputMode="decimal"
+                        style={{ maxWidth: 90 }}
+                        aria-label="Količina"
+                        value={String(it.quantity)}
+                        onChange={(e) => {
+                          const q = Number(e.target.value.replace(',', '.')) || 1;
+                          const next = [...draftItems];
+                          next[idx] = {
+                            ...it,
+                            quantity: q,
+                            lineTotal: Math.round(it.unitPrice * q * 100) / 100,
+                          };
+                          setDraftItems(next);
+                        }}
+                      />
+                      <input
+                        className="input"
+                        inputMode="decimal"
+                        aria-label="Cijena KM"
+                        value={String(it.unitPrice)}
+                        onChange={(e) => {
+                          const p = Number(e.target.value.replace(',', '.')) || 0;
+                          const next = [...draftItems];
+                          next[idx] = {
+                            ...it,
+                            unitPrice: p,
+                            lineTotal: Math.round(p * it.quantity * 100) / 100,
+                          };
+                          setDraftItems(next);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-ghost"
+                        aria-label="Ukloni stavku"
+                        onClick={() => setDraftItems((prev) => prev.filter((_, i) => i !== idx))}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                  <label className="label" style={{ margin: 0 }}>
+                    Predlozi iz kataloga
+                    <select
+                      className="select"
+                      value=""
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (!v) return;
+                        if (v === '__new') applyCatalogChoice(idx, 'new');
+                        else {
+                          const hit = suggestions.find((s) => s.id === v);
+                          if (hit) {
+                            applyCatalogChoice(idx, {
+                              id: hit.id,
+                              label: hit.label,
+                              unit: hit.unit,
+                              category: hit.category,
+                            });
+                          }
+                        }
+                      }}
+                    >
+                      <option value="">Izaberi artikal iz kataloga…</option>
+                      {suggestions.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.label} ({s.score}%)
+                        </option>
+                      ))}
+                      <option value="__new">+ Kreiraj novi: {it.rawName}</option>
+                    </select>
+                  </label>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <label className="label">
@@ -382,7 +522,11 @@ export function ArchivePage() {
                 type="button"
                 className="store-card"
                 style={{ textAlign: 'left', width: '100%', cursor: 'pointer' }}
-                onClick={() => setSelectedReceipt(r.id)}
+                onClick={() => {
+                  setSelectedReceipt(r.id);
+                  setConfirmDeleteReceipt(false);
+                  setEditReceiptIdx(null);
+                }}
               >
                 <div className="row" style={{ justifyContent: 'space-between' }}>
                   <div className="row">
@@ -420,13 +564,132 @@ export function ArchivePage() {
                   />
                 )}
                 {receiptDetail.items.map((it, i) => (
-                  <div key={i} className="row" style={{ justifyContent: 'space-between' }}>
-                    <span>
-                      {it.name} ({it.quantity} {it.unit})
-                    </span>
-                    <strong>{formatKm(it.lineTotal)}</strong>
+                  <div key={i} className="store-card">
+                    {editReceiptIdx === i ? (
+                      <div className="stack" style={{ gap: '0.4rem' }}>
+                        <div className="row">
+                          <input
+                            className="input"
+                            inputMode="decimal"
+                            style={{ maxWidth: 100 }}
+                            value={editRcptQty}
+                            onChange={(e) => setEditRcptQty(e.target.value)}
+                            aria-label="Količina"
+                          />
+                          <input
+                            className="input"
+                            inputMode="decimal"
+                            style={{ maxWidth: 110 }}
+                            value={editRcptPrice}
+                            onChange={(e) => setEditRcptPrice(e.target.value)}
+                            aria-label="Cijena KM"
+                          />
+                        </div>
+                        <div className="row">
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-action"
+                            onClick={() => {
+                              void updateReceiptItem(receiptDetail.id, i, {
+                                quantity: Number(editRcptQty.replace(',', '.')) || it.quantity,
+                                unitPrice: Number(editRcptPrice.replace(',', '.')) || it.unitPrice,
+                              });
+                              setEditReceiptIdx(null);
+                              setMsg('Stavka računa ažurirana. Budžet je preračunat.');
+                            }}
+                          >
+                            Sačuvaj
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-ghost"
+                            onClick={() => setEditReceiptIdx(null)}
+                          >
+                            Otkaži
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div>
+                          <div style={{ fontWeight: 700 }}>{it.name}</div>
+                          <div className="muted" style={{ fontSize: '0.85rem' }}>
+                            {it.quantity} {it.unit} × {formatKm(it.unitPrice)}
+                          </div>
+                        </div>
+                        <div className="stack" style={{ alignItems: 'flex-end', gap: '0.25rem' }}>
+                          <strong>{formatKm(it.lineTotal)}</strong>
+                          <div className="row">
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-ghost"
+                              aria-label="Uredi stavku"
+                              onClick={() => {
+                                setEditReceiptIdx(i);
+                                setEditRcptPrice(String(it.unitPrice));
+                                setEditRcptQty(String(it.quantity));
+                              }}
+                            >
+                              ✎
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-ghost"
+                              aria-label="Obriši stavku"
+                              onClick={() => {
+                                if (window.confirm(`Obrisati stavku „${it.name}“ sa računa?`)) {
+                                  void deleteReceiptItem(receiptDetail.id, i);
+                                  setMsg('Stavka obrisana. Budžet je preračunat.');
+                                }
+                              }}
+                            >
+                              🗑
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
+
+                {!confirmDeleteReceipt ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ color: 'var(--danger, #c0392b)' }}
+                    onClick={() => setConfirmDeleteReceipt(true)}
+                  >
+                    Obriši cijeli račun
+                  </button>
+                ) : (
+                  <div className="card stack" style={{ background: 'rgba(192,57,43,0.08)' }}>
+                    <p style={{ margin: 0 }}>
+                      Obrisati račun iz {receiptDetail.storeName} ({formatKm(receiptDetail.total)})?
+                      Ovo uklanja i povezane cijene iz arhive i ažurira budžet.
+                    </p>
+                    <div className="row">
+                      <button
+                        type="button"
+                        className="btn btn-action"
+                        onClick={() => {
+                          void deleteReceipt(receiptDetail.id);
+                          setSelectedReceipt(null);
+                          setConfirmDeleteReceipt(false);
+                          setMsg('Račun obrisan. Mjesečna potrošnja je ažurirana.');
+                        }}
+                      >
+                        Da, obriši
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => setConfirmDeleteReceipt(false)}
+                      >
+                        Otkaži
+                      </button>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </aside>
@@ -442,23 +705,33 @@ export function ArchivePage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
-            {grouped.map((g) => (
-              <button
-                key={g.key}
-                type="button"
-                className="store-card"
-                style={{ textAlign: 'left', width: '100%', cursor: 'pointer' }}
-                onClick={() => setHistoryItemKey(g.key)}
-              >
-                <div className="row" style={{ justifyContent: 'space-between' }}>
-                  <strong>{g.name}</strong>
-                  <span className="badge">{g.count}×</span>
-                </div>
-                <div className="muted" style={{ fontSize: '0.9rem' }}>
-                  {formatKm(g.min)} – {formatKm(g.max)} · zadnje {formatDateTime(g.last)}
-                </div>
-              </button>
-            ))}
+            {grouped.map((g) => {
+              const superDeal = isSuperPrice(archive, g.name, g.lastPrice);
+              return (
+                <button
+                  key={g.key}
+                  type="button"
+                  className="store-card"
+                  style={{ textAlign: 'left', width: '100%', cursor: 'pointer' }}
+                  onClick={() => {
+                    setHistoryItemKey(g.key);
+                    setRenameName(g.name);
+                    setEditArchiveId(null);
+                  }}
+                >
+                  <div className="row" style={{ justifyContent: 'space-between' }}>
+                    <strong>{g.name}</strong>
+                    <div className="row">
+                      {superDeal && <span className="badge badge-super">Super cijena</span>}
+                      <span className="badge">{g.count}×</span>
+                    </div>
+                  </div>
+                  <div className="muted" style={{ fontSize: '0.9rem' }}>
+                    {formatKm(g.min)} – {formatKm(g.max)} · zadnje {formatDateTime(g.last)}
+                  </div>
+                </button>
+              );
+            })}
           </section>
           <aside className="card stack">
             <h2 style={{ margin: 0, fontSize: '1.05rem' }}>
@@ -480,23 +753,192 @@ export function ArchivePage() {
                 </div>
               </div>
             )}
+            {historyItemKey && (
+              <div className="stack" style={{ gap: '0.4rem' }}>
+                <label className="label">
+                  Preimenuj artikal
+                  <div className="row">
+                    <input
+                      className="input"
+                      value={renameName}
+                      onChange={(e) => setRenameName(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={() => {
+                        void renameArchiveItem(historyItemKey, renameName);
+                        setMsg('Artikal preimenovan.');
+                      }}
+                    >
+                      Sačuvaj
+                    </button>
+                  </div>
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-ghost"
+                  style={{ color: 'var(--danger, #c0392b)' }}
+                  onClick={() => {
+                    if (window.confirm('Obrisati sve zapise cijena za ovaj artikal?')) {
+                      void deleteArchiveItemGroup(historyItemKey);
+                      setMsg('Artikal i svi zapisi cijena su obrisani.');
+                    }
+                  }}
+                >
+                  Obriši artikal iz arhive
+                </button>
+              </div>
+            )}
             {!detail.length && <p className="muted">Odaberi artikal.</p>}
             {detail.map((a) => {
               const isLow = stats && a.unitPrice === stats.min;
+              const superDeal = isSuperPrice(archive, a.itemName, a.unitPrice);
               return (
                 <div key={a.id} className={`store-card${isLow ? ' best' : ''}`}>
-                  <div className="row" style={{ justifyContent: 'space-between' }}>
-                    <strong>{formatKm(a.unitPrice)}</strong>
-                    {isLow && <span className="badge badge-action">Najjeftinije</span>}
-                  </div>
-                  <div className="muted" style={{ fontSize: '0.85rem' }}>
-                    {a.storeName} · {formatDateTime(a.recordedAt)}
-                  </div>
+                  {editArchiveId === a.id ? (
+                    <div className="stack" style={{ gap: '0.4rem' }}>
+                      <div className="row">
+                        <input
+                          className="input"
+                          inputMode="decimal"
+                          style={{ maxWidth: 110 }}
+                          value={editPrice}
+                          onChange={(e) => setEditPrice(e.target.value)}
+                          aria-label="Cijena KM"
+                        />
+                        <input
+                          className="input"
+                          inputMode="decimal"
+                          style={{ maxWidth: 90 }}
+                          value={editQty}
+                          onChange={(e) => setEditQty(e.target.value)}
+                          aria-label="Količina"
+                        />
+                      </div>
+                      <div className="row">
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-action"
+                          onClick={() => {
+                            void updateArchiveEntry(a.id, {
+                              unitPrice: Number(editPrice.replace(',', '.')) || a.unitPrice,
+                              quantity: Number(editQty.replace(',', '.')) || a.quantity,
+                            });
+                            setEditArchiveId(null);
+                            setMsg('Cijena ažurirana. Statistika je preračunata.');
+                          }}
+                        >
+                          Sačuvaj
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost"
+                          onClick={() => setEditArchiveId(null)}
+                        >
+                          Otkaži
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="row" style={{ justifyContent: 'space-between' }}>
+                        <strong>{formatKm(a.unitPrice)}</strong>
+                        <div className="row">
+                          {superDeal && <span className="badge badge-super">Super cijena</span>}
+                          {isLow && <span className="badge badge-action">Najjeftinije</span>}
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-ghost"
+                            aria-label="Uredi cijenu"
+                            onClick={() => {
+                              setEditArchiveId(a.id);
+                              setEditPrice(String(a.unitPrice));
+                              setEditQty(String(a.quantity));
+                            }}
+                          >
+                            ✎
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-ghost"
+                            aria-label="Obriši unos"
+                            onClick={() => {
+                              if (window.confirm('Obrisati ovaj unos cijene?')) {
+                                void deleteArchiveEntryById(a.id);
+                                setMsg('Unos obrisan. Statistika je preračunata.');
+                              }
+                            }}
+                          >
+                            🗑
+                          </button>
+                        </div>
+                      </div>
+                      <div className="muted" style={{ fontSize: '0.85rem' }}>
+                        {a.storeName} · {a.quantity} {a.unit} · {formatDateTime(a.recordedAt)}
+                      </div>
+                    </>
+                  )}
                 </div>
               );
             })}
           </aside>
         </div>
+      )}
+
+      {tab === 'katalog' && (
+        <section className="stack">
+          <p className="muted" style={{ margin: 0 }}>
+            Ručno dodani artikli koje možeš preimenovati ili obrisati.
+          </p>
+          {!remembered.length && <div className="card muted">Nema ručno dodanih artikala.</div>}
+          {remembered.map((r) => (
+            <div key={r.id} className="store-card">
+              <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                <div>
+                  <strong>{r.name}</strong>
+                  <div className="muted" style={{ fontSize: '0.85rem' }}>
+                    {r.unit} · {UNIT_LABELS.includes(r.unit) ? r.unit : r.unit}
+                  </div>
+                </div>
+                <div className="row">
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-ghost"
+                    onClick={() => {
+                      const name = window.prompt('Novo ime artikla', r.name);
+                      if (name?.trim()) renameRememberedItem(r.id, name.trim());
+                    }}
+                  >
+                    Preimenuj
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-ghost"
+                    style={{ color: 'var(--danger, #c0392b)' }}
+                    onClick={() => {
+                      if (window.confirm(`Obrisati „${r.name}“ iz kataloga?`)) {
+                        deleteRememberedItem(r.id);
+                      }
+                    }}
+                  >
+                    Obriši
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+          {aliases.length > 0 && (
+            <>
+              <div className="section-title">Zapamćeni aliasi (fiskalni nazivi)</div>
+              {aliases.map((a) => (
+                <div key={a.id} className="card" style={{ fontSize: '0.9rem' }}>
+                  <code>{a.rawName}</code> → <strong>{a.catalogName}</strong>
+                </div>
+              ))}
+            </>
+          )}
+        </section>
       )}
     </div>
   );

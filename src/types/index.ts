@@ -149,6 +149,44 @@ export interface UserProfile {
   displayName: string;
   photoURL?: string;
   provider: 'demo' | 'email' | 'google';
+  familyCode?: string;
+}
+
+/** Mapiranje naziva sa fiskalnog računa → katalog. */
+export interface ItemAlias {
+  id: string;
+  rawName: string;
+  rawKey: string;
+  catalogName: string;
+  catalogId?: string;
+  category: Category;
+  unit: Unit;
+  createdAt: string;
+}
+
+export interface ShoppingTemplate {
+  id: string;
+  name: string;
+  items: Array<{
+    name: string;
+    quantity: number;
+    unit: Unit;
+    category: Category;
+    catalogId?: string;
+  }>;
+  createdAt: string;
+}
+
+export interface SplitCartSuggestion {
+  storeAId: string;
+  storeBId: string;
+  storeAName: string;
+  storeBName: string;
+  storeAItems: Array<{ itemId: string; name: string; line: number }>;
+  storeBItems: Array<{ itemId: string; name: string; line: number }>;
+  combinedTotal: number;
+  bestSingleTotal: number;
+  savings: number;
 }
 
 export type AiProvider = 'auto' | 'gemini' | 'groq' | 'tesseract';

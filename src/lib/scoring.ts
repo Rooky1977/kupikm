@@ -45,6 +45,25 @@ export function getLastPriceInfo(
   };
 }
 
+/** Super cijena: najniža u 90 dana ili ≥8% ispod prosjeka. */
+export function isSuperPrice(
+  archive: ArchiveEntry[],
+  itemName: string,
+  currentUnitPrice?: number,
+): boolean {
+  const key = normalizeItemKey(itemName);
+  const since = Date.now() - 90 * 86400000;
+  const recent = archive.filter(
+    (a) => a.itemKey === key && new Date(a.recordedAt).getTime() >= since,
+  );
+  if (recent.length < 2) return false;
+  const price = currentUnitPrice ?? recent.sort((a, b) => b.recordedAt.localeCompare(a.recordedAt))[0]?.unitPrice;
+  if (price == null) return false;
+  const min = Math.min(...recent.map((r) => r.unitPrice));
+  const avg = recent.reduce((s, r) => s + r.unitPrice, 0) / recent.length;
+  return price <= min + 0.001 || price <= avg * 0.92;
+}
+
 export function priceDeltaVsLast(
   archive: ArchiveEntry[],
   itemName: string,
