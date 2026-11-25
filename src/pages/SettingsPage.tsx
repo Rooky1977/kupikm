@@ -133,26 +133,51 @@ export function SettingsPage() {
       </section>
 
       <section className="card stack">
-        <h2 style={{ margin: 0, fontSize: '1.05rem' }}>AI ključ za parsiranje računa</h2>
-        <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-          OpenAI-kompatibilan ključ omogućava automatsko čitanje slike ili teksta računa u Arhivi.
+        <h2 style={{ margin: 0, fontSize: '1.05rem' }}>AI ključ za skeniranje računa</h2>
+        <p className="muted" style={{ margin: 0, fontSize: '0.9rem' }}>
+          Status:{' '}
+          <strong style={{ color: settings.openAiApiKey ? 'var(--success)' : 'var(--danger)' }}>
+            {settings.openAiApiKey ? 'Ključ je aktivan — skeniranje radi u fullu' : 'Ključ nije unesen'}
+          </strong>
         </p>
+        <ol className="muted" style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.9rem', lineHeight: 1.5 }}>
+          <li>
+            Otvori{' '}
+            <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">
+              platform.openai.com/api-keys
+            </a>{' '}
+            i prijavi se
+          </li>
+          <li>Klikni <strong>Create new secret key</strong>, kopiraj ključ (počinje sa <code>sk-</code>)</li>
+          <li>Nalijepi ga ispod i klikni <strong>Sačuvaj ključ</strong></li>
+          <li>
+            Idi u <strong>Arhiva → Uslikaj / dodaj račun</strong> — AI izvlači artikle, cijene i radnju
+          </li>
+        </ol>
         <form
           className="form-grid"
           onSubmit={(e) => {
             e.preventDefault();
             setOpenAiKey(apiKey.trim());
-            setMsg('API ključ sačuvan lokalno.');
+            setMsg(
+              apiKey.trim()
+                ? 'API ključ sačuvan. Sada možeš uslikati račun u Arhivi.'
+                : 'Ključ je obrisan.',
+            );
           }}
         >
-          <input
-            className="input"
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="sk-..."
-          />
-          <button type="submit" className="btn btn-ghost">
+          <label className="label">
+            OpenAI API ključ
+            <input
+              className="input"
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="sk-proj-... ili sk-..."
+              autoComplete="off"
+            />
+          </label>
+          <button type="submit" className="btn btn-action">
             Sačuvaj ključ
           </button>
         </form>
