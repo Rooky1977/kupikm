@@ -1,3 +1,4 @@
+import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -5,6 +6,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig({
   plugins: [
     react(),
+    tailwindcss(),
     VitePWA({
       registerType: 'prompt',
       includeAssets: ['favicon.svg'],
@@ -13,8 +15,8 @@ export default defineConfig({
         short_name: 'KupiKM',
         description:
           'Poređenje cijena po radnjama, najbliže radnje i mjesečni budžet za kupovinu u BiH.',
-        theme_color: '#1f6b4a',
-        background_color: '#f3f6f2',
+        theme_color: '#0B0F19',
+        background_color: '#0B0F19',
         display: 'standalone',
         orientation: 'portrait-primary',
         lang: 'bs',

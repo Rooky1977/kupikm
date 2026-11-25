@@ -216,28 +216,67 @@ export function ListPage() {
   };
 
   return (
-    <div className="desktop-3col">
+    <div className="desktop-3col" id="spisak">
       <section className="stack">
-        <div className="page-header">
-          <div>
-            <h1>{list.name}</h1>
-            <p>
-              Kod dijeljenja: <strong>{list.shareCode}</strong>
-            </p>
+        <div className="card stack">
+          <div className="list-toolbar">
+            <div className="row" style={{ gap: '0.65rem' }}>
+              <span
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 12,
+                  display: 'grid',
+                  placeItems: 'center',
+                  background: 'rgba(0,230,118,0.16)',
+                  color: 'var(--cyber-green)',
+                }}
+                aria-hidden
+              >
+                🛒
+              </span>
+              <div>
+                <h1 style={{ margin: 0, fontSize: '1.25rem' }}>Moj spisak</h1>
+                <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+                  Kod: <strong style={{ color: 'var(--cyber-green)' }}>{list.shareCode}</strong>
+                </p>
+              </div>
+            </div>
+            <div className="row" style={{ flexWrap: 'wrap' }}>
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setLoyaltyOpen(true)}>
+                Kartice
+              </button>
+              <button type="button" className="btn btn-sm btn-action">
+                Lista
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-action"
+                onClick={finishShopping}
+                disabled={!cart.length}
+              >
+                Završi
+              </button>
+            </div>
           </div>
-          <div className="row" style={{ flexWrap: 'wrap' }}>
-            <button type="button" className="btn btn-ghost" onClick={() => setLoyaltyOpen(true)}>
-              Kartice
-            </button>
+
+          <div className="wake-bar">
+            <div className="row">
+              <span aria-hidden>🔒</span>
+              <span style={{ fontWeight: 700, fontSize: '0.92rem' }}>
+                Ekran upaljen (Wake Lock) dok kupuješ
+              </span>
+            </div>
             <button
               type="button"
-              className="btn btn-action"
-              onClick={finishShopping}
-              disabled={!cart.length}
+              className={`cyber-toggle${settings.keepScreenOn ? ' on' : ''}`}
+              aria-label="Wake Lock"
+              onClick={() => setKeepScreenOn(!settings.keepScreenOn)}
             >
-              Završi kupovinu
+              <span />
             </button>
           </div>
+          {wakeMsg && <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>{wakeMsg}</p>}
         </div>
 
         {lastUiError && (
@@ -248,18 +287,6 @@ export function ListPage() {
             </button>
           </div>
         )}
-
-        <div className="card stack">
-          <label className="switch-row">
-            <input
-              type="checkbox"
-              checked={settings.keepScreenOn}
-              onChange={(e) => setKeepScreenOn(e.target.checked)}
-            />
-            <span>Ekran upaljen (Wake Lock) dok kupuješ</span>
-          </label>
-          {wakeMsg && <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>{wakeMsg}</p>}
-        </div>
 
         {frequent.length > 0 && (
           <div className="card stack">
@@ -440,7 +467,7 @@ export function ListPage() {
         ))}
 
         {!list.items.length && (
-          <div className="card muted" style={{ textAlign: 'center' }}>
+          <div className="empty-dash">
             Spisak je prazan. Ukucaj, izgovori ili skeniraj namirnicu.
           </div>
         )}
@@ -448,7 +475,12 @@ export function ListPage() {
 
       <aside className="stack">
         <div className="card stack">
-          <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Poređenje radnji</h2>
+          <div className="row" style={{ justifyContent: 'space-between' }}>
+            <h2 style={{ margin: 0, fontSize: '1.05rem' }}>
+              <span style={{ color: 'var(--cyber-green)', marginRight: 6 }}>📊</span>
+              Poređenje radnji
+            </h2>
+          </div>
           <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
             Procjena cijelog spiska po zadnjim cijenama iz arhive.
           </p>
@@ -464,12 +496,14 @@ export function ListPage() {
                     {est.isBestChoice && <span className="badge">Najbolji omjer</span>}
                   </div>
                 </div>
-                <div className="price-big" style={{ fontSize: '1.3rem' }}>
-                  {est.pricedCount > 0 ? formatKm(est.total) : '—'}
-                </div>
-                <div className="muted" style={{ fontSize: '0.82rem' }}>
-                  {est.pricedCount}/{list.items.length} sa cijenom
-                  {est.distanceKm != null ? ` · ${formatDistance(est.distanceKm)}` : ''}
+                <div className="row" style={{ justifyContent: 'space-between', marginTop: '0.35rem' }}>
+                  <span className="muted" style={{ fontSize: '0.82rem' }}>
+                    {est.pricedCount}/{list.items.length} sa cijenom
+                    {est.distanceKm != null ? ` · ${formatDistance(est.distanceKm)}` : ''}
+                  </span>
+                  <strong className="price-big" style={{ fontSize: '1.05rem' }}>
+                    {est.pricedCount > 0 ? `${formatKm(est.total)} ›` : '—'}
+                  </strong>
                 </div>
               </div>
             );
@@ -504,7 +538,12 @@ export function ListPage() {
         )}
 
         <div className="card stack">
-          <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Najbliže radnje</h2>
+          <div className="row" style={{ justifyContent: 'space-between' }}>
+            <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Najbliže radnje</h2>
+            <button type="button" className="btn btn-sm btn-ghost" onClick={() => setActiveStore(nearby[0]?.id ?? '')}>
+              Pogledaj sve →
+            </button>
+          </div>
           {nearby.map((s) => (
             <div key={s.id} className="row" style={{ justifyContent: 'space-between' }}>
               <div>
@@ -513,8 +552,8 @@ export function ListPage() {
                   {s.distanceKm != null ? formatDistance(s.distanceKm) : s.zone}
                 </div>
               </div>
-              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setActiveStore(s.id)}>
-                Kupuj
+              <button type="button" className="btn btn-sm btn-action" onClick={() => setActiveStore(s.id)}>
+                Kupi
               </button>
             </div>
           ))}

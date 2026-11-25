@@ -260,7 +260,7 @@ interface AppState {
 }
 
 const defaultSettings: AppSettings = {
-  theme: 'light',
+  theme: 'dark',
   cityFallback: 'Sarajevo',
   aiProvider: 'auto',
   geminiApiKey: '',

@@ -59,7 +59,7 @@ export function PullUpdateButton({ compact = false }: { compact?: boolean }) {
       }}
       title="Preuzmi i učitaj najnoviju verziju"
     >
-      {busy ? 'Učitavam…' : compact ? 'Nova verzija' : 'Povuci novu verziju'}
+      {busy ? 'Učitavam…' : compact ? '+ Nova verzija 🚀' : 'Povuci novu verziju'}
     </button>
   );
 }
