@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { PullUpdateButton } from '../components/layout/UpdateBanner';
 import type { ThemeMode } from '../types';
 import { useAppStore } from '../store/useAppStore';
 
@@ -31,6 +32,14 @@ export function SettingsPage() {
           </p>
         </div>
       </div>
+
+      <section className="card stack">
+        <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Aplikacija</h2>
+        <p className="muted" style={{ margin: 0 }}>
+          Ako na telefonu i dalje vidiš staru verziju, povuci novu i osvježi keš.
+        </p>
+        <PullUpdateButton />
+      </section>
 
       <section className="card stack">
         <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Tema</h2>

@@ -4,6 +4,7 @@ import { formatKm } from '../../lib/format';
 import { useAppStore } from '../../store/useAppStore';
 import { CirkaStrip } from './CirkaStrip';
 import { IconBudget, IconHistory, IconList, IconSettings, IconStore } from './Icons';
+import { PullUpdateButton, UpdateBanner } from './UpdateBanner';
 import { CartConfirmModal } from '../list/CartConfirmModal';
 
 const links = [
@@ -61,7 +62,8 @@ export function AppShell() {
             <div className="brand">
               Kupi<span>KM</span>
             </div>
-            <div className="row">
+            <div className="row" style={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <PullUpdateButton compact />
               <span className="muted" style={{ fontSize: '0.85rem' }}>
                 {user?.displayName ?? 'Gost'}
               </span>
@@ -75,6 +77,7 @@ export function AppShell() {
               </button>
             </div>
           </div>
+          <UpdateBanner />
           <CirkaStrip />
         </div>
       </header>

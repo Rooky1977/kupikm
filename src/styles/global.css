@@ -631,6 +631,21 @@ a {
   cursor: pointer;
 }
 
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.7rem 0.85rem;
+  border-radius: var(--radius-sm);
+  background: var(--action-soft);
+  border: 1px solid color-mix(in srgb, var(--action) 35%, var(--border));
+  color: var(--action-strong);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
 .budget-card-side {
   margin-top: auto;
   padding: 0.9rem;
