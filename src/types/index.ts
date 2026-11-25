@@ -3,12 +3,16 @@ export type ThemeMode = 'light' | 'dark' | 'system';
 export type Unit = 'kom' | 'kg' | 'g' | 'l' | 'ml' | 'pak';
 
 export type Category =
+  | 'cigarete'
   | 'mlijecno'
   | 'pekara'
+  | 'ostava'
   | 'meso'
   | 'voce-povrce'
+  | 'slatkisi'
   | 'pice'
   | 'hemija'
+  | 'kucanstvo'
   | 'ostalo';
 
 export type SyncStatus = 'online' | 'offline' | 'sync' | 'local';
@@ -196,12 +200,16 @@ export interface CirkaSummary {
 }
 
 export const CATEGORY_LABELS: Record<Category, string> = {
-  mlijecno: 'Mliječno',
-  pekara: 'Pekara',
-  meso: 'Meso',
+  cigarete: 'Cigarete i duvan',
+  mlijecno: 'Mliječno i jaja',
+  pekara: 'Pekara i tjestenina',
+  ostava: 'Ulja i ostava',
+  meso: 'Meso i riba',
   'voce-povrce': 'Voće i povrće',
-  pice: 'Piće',
-  hemija: 'Hemija',
+  slatkisi: 'Slatkiši i grickalice',
+  pice: 'Pića',
+  hemija: 'Hemija i higijena',
+  kucanstvo: 'Kućanstvo / alat / auto / vrt',
   ostalo: 'Ostalo',
 };
 

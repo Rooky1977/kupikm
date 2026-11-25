@@ -16,7 +16,7 @@ export function SmartAdd() {
   const [category, setCategory] = useState<Category>('ostalo');
 
   const suggestions = useMemo(
-    () => searchSuggestions(query, remembered, 8),
+    () => searchSuggestions(query, remembered, 12),
     [query, remembered],
   );
 
@@ -51,7 +51,7 @@ export function SmartAdd() {
             setQuery(e.target.value);
             setShowCustom(false);
           }}
-          placeholder="npr. ulje, mlijeko, jaja…"
+          placeholder="npr. floriol, marlboro, mlijeko, baterije…"
           autoComplete="off"
         />
       </label>

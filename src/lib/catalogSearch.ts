@@ -1,5 +1,5 @@
 import { flattenCatalogVariants } from '../data/catalog';
-import type { Category, RememberedItem, Unit } from '../types';
+import { CATEGORY_LABELS, type Category, type RememberedItem, type Unit } from '../types';
 import { normalizeItemKey } from './format';
 
 export interface Suggestion {
@@ -14,18 +14,22 @@ export interface Suggestion {
 export function searchSuggestions(
   query: string,
   remembered: RememberedItem[],
-  limit = 8,
+  limit = 12,
 ): Suggestion[] {
   const q = normalizeItemKey(query);
   if (q.length < 1) return [];
 
   const catalogHits = flattenCatalogVariants()
     .map((v) => {
-      const hay = normalizeItemKey([v.label, ...v.keywords].join(' '));
+      const categoryLabel = CATEGORY_LABELS[v.category] ?? '';
+      const hay = normalizeItemKey([v.label, v.productName, categoryLabel, ...v.keywords].join(' '));
       const score =
-        (hay.startsWith(q) ? 30 : 0) +
-        (hay.includes(q) ? 20 : 0) +
-        (v.keywords.some((k) => normalizeItemKey(k).startsWith(q)) ? 15 : 0);
+        (normalizeItemKey(v.label).startsWith(q) ? 40 : 0) +
+        (hay.startsWith(q) ? 25 : 0) +
+        (hay.includes(q) ? 18 : 0) +
+        (v.keywords.some((k) => normalizeItemKey(k).startsWith(q)) ? 20 : 0) +
+        (normalizeItemKey(categoryLabel).includes(q) ? 12 : 0) +
+        (normalizeItemKey(v.productName).includes(q) ? 10 : 0);
       return { v, score };
     })
     .filter((x) => x.score > 0)
@@ -41,7 +45,7 @@ export function searchSuggestions(
 
   const rememberedHits = remembered
     .filter((r) => {
-      const hay = normalizeItemKey([r.name, ...r.keywords].join(' '));
+      const hay = normalizeItemKey([r.name, CATEGORY_LABELS[r.category] ?? '', ...r.keywords].join(' '));
       return hay.includes(q);
     })
     .map((r) => ({

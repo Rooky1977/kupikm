@@ -328,12 +328,18 @@ export async function parseReceiptImage(
 
 export function guessCategory(name: string): Category {
   const k = normalizeItemKey(name);
-  if (/mlijeko|jogurt|pavlaka|jaja|sir|mleko/.test(k)) return 'mlijecno';
-  if (/hljeb|hleb|somun|kifla|pecivo|lepinja/.test(k)) return 'pekara';
-  if (/pile|meso|june|virsle|batak/.test(k)) return 'meso';
-  if (/banana|jabuk|krompir|luk|paradajz|voce|povrce/.test(k)) return 'voce-povrce';
-  if (/voda|sok|cola|caj|pivo/.test(k)) return 'pice';
-  if (/deterdzent|pasta|sampon|gel|toalet|sapun|sudje/.test(k)) return 'hemija';
+  if (/marlboro|winston|cigaret|duvan|upaljac|rothmans|davidoff/.test(k)) return 'cigarete';
+  if (/mlijeko|jogurt|pavlaka|jaja|sir|mleko|kajmak|maslac/.test(k)) return 'mlijecno';
+  if (/hljeb|hleb|somun|kifla|pecivo|lepinja|spaghetti|tjestenina|riza|riža|burek/.test(k))
+    return 'pekara';
+  if (/ulje|floriol|secer|šećer|brasno|brašno|kafa|sol|vegeta|kecap|majoneza/.test(k))
+    return 'ostava';
+  if (/pile|meso|june|virsle|batak|riba|sunka|šunka|kobasica/.test(k)) return 'meso';
+  if (/banana|jabuk|krompir|luk|paradajz|voce|povrce|mrkva|krastavac/.test(k)) return 'voce-povrce';
+  if (/cokolada|čokolada|keks|cips|čips|sladoled|bombone|nutella/.test(k)) return 'slatkisi';
+  if (/voda|sok|cola|pivo|vino|rakija|energy/.test(k)) return 'pice';
+  if (/deterdzent|pasta|sampon|gel|toalet|sapun|sudje|ubrusi|pelene/.test(k)) return 'hemija';
+  if (/baterij|sijalic|igla|alat|odvijac|cekic|auto|vrt|sraf|lokomotiva/.test(k)) return 'kucanstvo';
   return 'ostalo';
 }
 
