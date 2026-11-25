@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { format } from 'date-fns';
 import { bs } from 'date-fns/locale';
 import {
+  describeScanMethod,
   fileToDataUrl,
   parseReceiptImage,
   parseReceiptText,
@@ -99,20 +100,30 @@ export function ArchivePage() {
     try {
       const dataUrl = await fileToDataUrl(file);
       setImageDataUrl(dataUrl);
-      if (settings.openAiApiKey) {
-        setMsg('AI parsira račun…');
-        const parsed = await parseReceiptImage(dataUrl, settings.openAiApiKey);
-        applyParsed(toReceiptItems(parsed.items), parsed.total, parsed.storeName);
-        setMsg(
-          parsed.items.length
-            ? `AI je našao ${parsed.items.length} stavki. Provjeri i sačuvaj.`
-            : 'AI nije našao stavke — unesi ručno ili nalijepi tekst.',
-        );
-      } else {
-        setMsg('Slika dodana. Unesi API ključ u Podešavanjima za automatsko parsiranje, ili dopuni stavke ručno.');
+      const parsed = await parseReceiptImage(
+        dataUrl,
+        {
+          aiProvider: settings.aiProvider,
+          geminiApiKey: settings.geminiApiKey,
+          groqApiKey: settings.groqApiKey,
+        },
+        (progressMsg) => setMsg(progressMsg),
+      );
+      applyParsed(toReceiptItems(parsed.items), parsed.total, parsed.storeName);
+      if (parsed.date) {
+        try {
+          setDate(parsed.date.slice(0, 10));
+        } catch {
+          /* ignore */
+        }
       }
+      setMsg(
+        parsed.items.length
+          ? `Izvučeno ${parsed.items.length} stavki preko: ${describeScanMethod(parsed.method)}. Provjeri i sačuvaj.`
+          : 'Nisu pronađene stavke — dodaj ih ručno ispod (i dalje je besplatno).',
+      );
     } catch {
-      setMsg('Greška pri učitavanju slike.');
+      setMsg('Greška pri čitanju slike. Dodaj stavke ručno.');
     } finally {
       setBusy(false);
     }
@@ -121,9 +132,15 @@ export function ArchivePage() {
   const onParseText = async () => {
     setBusy(true);
     try {
-      const parsed = await parseReceiptText(text, settings.openAiApiKey || undefined);
+      const parsed = await parseReceiptText(text, {
+        aiProvider: settings.aiProvider,
+        geminiApiKey: settings.geminiApiKey,
+        groqApiKey: settings.groqApiKey,
+      });
       applyParsed(toReceiptItems(parsed.items), parsed.total, parsed.storeName);
-      setMsg(`Pronađeno ${parsed.items.length} stavki.`);
+      setMsg(
+        `Pronađeno ${parsed.items.length} stavki (${describeScanMethod(parsed.method)}).`,
+      );
     } finally {
       setBusy(false);
     }
@@ -133,13 +150,24 @@ export function ArchivePage() {
     e.preventDefault();
     const store = stores.find((s) => s.id === storeId);
     if (!store) return;
-    const items =
-      draftItems.length > 0
-        ? draftItems
-        : toReceiptItems(
-            (await parseReceiptText(text)).items,
-          );
-    const totalNum = Number(total.replace(',', '.')) || items.reduce((s, i) => s + i.lineTotal, 0);
+    let items = draftItems;
+    if (!items.length && text.trim()) {
+      items = toReceiptItems(
+        (
+          await parseReceiptText(text, {
+            aiProvider: settings.aiProvider,
+            geminiApiKey: settings.geminiApiKey,
+            groqApiKey: settings.groqApiKey,
+          })
+        ).items,
+      );
+    }
+    if (!items.length) {
+      setMsg('Dodaj barem jednu stavku prije spremanja.');
+      return;
+    }
+    const totalNum =
+      Number(total.replace(',', '.')) || items.reduce((s, i) => s + i.lineTotal, 0);
     await saveReceipt({
       storeId: store.id,
       storeName: store.name,
@@ -147,12 +175,12 @@ export function ArchivePage() {
       items,
       total: totalNum,
       imageDataUrl,
-      source: imageDataUrl ? (settings.openAiApiKey ? 'ai' : 'camera') : 'manual',
+      source: imageDataUrl ? 'ai' : 'manual',
     });
     setShowAdd(false);
     setDraftItems([]);
     setImageDataUrl(undefined);
-    setMsg('Račun sačuvan u arhivu. Stavke su ažurirale historiju cijena.');
+    setMsg('Račun sačuvan. Arhiva artikala i cijene su ažurirane za sljedeće spiskove.');
     setTab('racuni');
   };
 
@@ -175,7 +203,7 @@ export function ArchivePage() {
       <div className="page-header">
         <div>
           <h1>Arhiva</h1>
-          <p>Računi i historija cijena artikala</p>
+          <p>Računi i historija cijena artikala · skeniranje je besplatno</p>
         </div>
         <button type="button" className="btn btn-action" onClick={() => setShowAdd(true)}>
           Uslikaj / dodaj račun
@@ -207,12 +235,19 @@ export function ArchivePage() {
 
       {showAdd && (
         <form className="card form-grid" style={{ marginBottom: '0.85rem' }} onSubmit={(e) => void onSave(e)}>
-          <div className="row" style={{ justifyContent: 'space-between' }}>
-            <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Novi račun</h2>
+          <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div className="row" style={{ flexWrap: 'wrap' }}>
+              <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Novi račun</h2>
+              <span className="badge badge-best">100% BESPLATNO</span>
+            </div>
             <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowAdd(false)}>
               Zatvori
             </button>
           </div>
+          <p className="muted" style={{ margin: 0, fontSize: '0.88rem' }}>
+            Uslikaj račun — čita se lokalno (Tesseract) ili preko besplatnog Gemini/Groq ključa.
+            Stavke možeš ispraviti prije spremanja. Spremanjem se ažurira Arhiva artikala.
+          </p>
 
           <div className="form-row-2">
             <label className="label">
@@ -233,16 +268,20 @@ export function ArchivePage() {
 
           <div className="row" style={{ flexWrap: 'wrap' }}>
             <label className="btn btn-action file-btn" style={{ margin: 0 }}>
-              Uslikaj / izaberi sliku
+              {busy ? 'Čitam račun…' : 'Uslikaj / izaberi sliku'}
               <input
                 type="file"
                 accept="image/*"
                 capture="environment"
+                disabled={busy}
                 onChange={(e) => void onPickImage(e.target.files?.[0] ?? null)}
               />
             </label>
             <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void onParseText()}>
               Parsiraj tekst
+            </button>
+            <button type="button" className="btn btn-sm btn-ghost" onClick={addManualLine}>
+              + Ručna stavka
             </button>
           </div>
 
@@ -251,64 +290,75 @@ export function ArchivePage() {
           )}
 
           <label className="label">
-            Tekst sa računa (ili dopuna)
+            Tekst sa računa (opciono)
             <textarea className="textarea" value={text} onChange={(e) => setText(e.target.value)} />
           </label>
 
-          {draftItems.length > 0 && (
-            <div className="stack">
-              <div className="section-title">Stavke</div>
-              {draftItems.map((it, idx) => (
-                <div key={idx} className="form-row-2">
+          <div className="stack">
+            <div className="section-title">Stavke za provjeru (naziv · količina · cijena KM)</div>
+            {!draftItems.length && (
+              <p className="muted" style={{ margin: 0 }}>
+                Još nema izvučenih stavki. Uslikaj račun ili dodaj ručno.
+              </p>
+            )}
+            {draftItems.map((it, idx) => (
+              <div key={idx} className="form-row-2">
+                <input
+                  className="input"
+                  value={it.name}
+                  aria-label="Naziv artikla"
+                  onChange={(e) => {
+                    const next = [...draftItems];
+                    next[idx] = { ...it, name: e.target.value };
+                    setDraftItems(next);
+                  }}
+                />
+                <div className="row">
                   <input
                     className="input"
-                    value={it.name}
+                    inputMode="decimal"
+                    style={{ maxWidth: 90 }}
+                    aria-label="Količina"
+                    value={String(it.quantity)}
                     onChange={(e) => {
+                      const q = Number(e.target.value.replace(',', '.')) || 1;
                       const next = [...draftItems];
-                      next[idx] = { ...it, name: e.target.value };
+                      next[idx] = {
+                        ...it,
+                        quantity: q,
+                        lineTotal: Math.round(it.unitPrice * q * 100) / 100,
+                      };
                       setDraftItems(next);
                     }}
                   />
-                  <div className="row">
-                    <input
-                      className="input"
-                      inputMode="decimal"
-                      style={{ maxWidth: 90 }}
-                      value={String(it.quantity)}
-                      onChange={(e) => {
-                        const q = Number(e.target.value.replace(',', '.')) || 1;
-                        const next = [...draftItems];
-                        next[idx] = {
-                          ...it,
-                          quantity: q,
-                          lineTotal: Math.round(it.unitPrice * q * 100) / 100,
-                        };
-                        setDraftItems(next);
-                      }}
-                    />
-                    <input
-                      className="input"
-                      inputMode="decimal"
-                      value={String(it.unitPrice)}
-                      onChange={(e) => {
-                        const p = Number(e.target.value.replace(',', '.')) || 0;
-                        const next = [...draftItems];
-                        next[idx] = {
-                          ...it,
-                          unitPrice: p,
-                          lineTotal: Math.round(p * it.quantity * 100) / 100,
-                        };
-                        setDraftItems(next);
-                      }}
-                    />
-                  </div>
+                  <input
+                    className="input"
+                    inputMode="decimal"
+                    aria-label="Cijena KM"
+                    value={String(it.unitPrice)}
+                    onChange={(e) => {
+                      const p = Number(e.target.value.replace(',', '.')) || 0;
+                      const next = [...draftItems];
+                      next[idx] = {
+                        ...it,
+                        unitPrice: p,
+                        lineTotal: Math.round(p * it.quantity * 100) / 100,
+                      };
+                      setDraftItems(next);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-ghost"
+                    aria-label="Ukloni stavku"
+                    onClick={() => setDraftItems((prev) => prev.filter((_, i) => i !== idx))}
+                  >
+                    ✕
+                  </button>
                 </div>
-              ))}
-              <button type="button" className="btn btn-sm btn-ghost" onClick={addManualLine}>
-                + Stavka
-              </button>
-            </div>
-          )}
+              </div>
+            ))}
+          </div>
 
           <label className="label">
             Ukupan iznos (KM)
@@ -318,7 +368,7 @@ export function ArchivePage() {
           {msg && <p className="muted" style={{ margin: 0 }}>{msg}</p>}
 
           <button type="submit" className="btn btn-action" disabled={busy}>
-            Sačuvaj račun
+            Sačuvaj u arhivu računa i artikala
           </button>
         </form>
       )}

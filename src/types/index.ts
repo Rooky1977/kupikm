@@ -147,10 +147,16 @@ export interface UserProfile {
   provider: 'demo' | 'email' | 'google';
 }
 
+export type AiProvider = 'auto' | 'gemini' | 'groq' | 'tesseract';
+
 export interface AppSettings {
   theme: ThemeMode;
   cityFallback: string;
-  openAiApiKey: string;
+  /** @deprecated zadržano radi migracije starih lokalnih podataka */
+  openAiApiKey?: string;
+  aiProvider: AiProvider;
+  geminiApiKey: string;
+  groqApiKey: string;
   firebaseConfigured: boolean;
   useMockData: boolean;
 }

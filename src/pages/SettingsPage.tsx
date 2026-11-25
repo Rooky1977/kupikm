@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { PullUpdateButton } from '../components/layout/UpdateBanner';
-import type { ThemeMode } from '../types';
+import type { AiProvider, ThemeMode } from '../types';
 import { useAppStore } from '../store/useAppStore';
 
 export function SettingsPage() {
@@ -9,7 +9,7 @@ export function SettingsPage() {
   const list = useAppStore((s) => s.list);
   const syncStatus = useAppStore((s) => s.syncStatus);
   const setTheme = useAppStore((s) => s.setTheme);
-  const setOpenAiKey = useAppStore((s) => s.setOpenAiKey);
+  const setAiSettings = useAppStore((s) => s.setAiSettings);
   const loginEmail = useAppStore((s) => s.loginEmail);
   const loginGoogle = useAppStore((s) => s.loginGoogle);
   const logout = useAppStore((s) => s.logout);
@@ -18,9 +18,13 @@ export function SettingsPage() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [apiKey, setApiKey] = useState(settings.openAiApiKey);
+  const [geminiKey, setGeminiKey] = useState(settings.geminiApiKey);
+  const [groqKey, setGroqKey] = useState(settings.groqApiKey);
+  const [provider, setProvider] = useState<AiProvider>(settings.aiProvider);
   const [shareCode, setShareCode] = useState('');
   const [msg, setMsg] = useState('');
+
+  const hasFreeKey = Boolean(settings.geminiApiKey || settings.groqApiKey);
 
   return (
     <div className="stack">
@@ -133,54 +137,87 @@ export function SettingsPage() {
       </section>
 
       <section className="card stack">
-        <h2 style={{ margin: 0, fontSize: '1.05rem' }}>AI ključ za skeniranje računa</h2>
+        <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap' }}>
+          <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Skeniranje računa</h2>
+          <span className="badge badge-best">100% BESPLATNO</span>
+        </div>
         <p className="muted" style={{ margin: 0, fontSize: '0.9rem' }}>
+          Radi i <strong>bez ikakvog ključa</strong> preko lokalnog OCR-a (Tesseract) u pregledniku.
+          Opciono možeš dodati besplatni Gemini ili Groq ključ za još bolje čitanje slike.
+        </p>
+        <p style={{ margin: 0, fontSize: '0.9rem' }}>
           Status:{' '}
-          <strong style={{ color: settings.openAiApiKey ? 'var(--success)' : 'var(--danger)' }}>
-            {settings.openAiApiKey ? 'Ključ je aktivan — skeniranje radi u fullu' : 'Ključ nije unesen'}
+          <strong style={{ color: 'var(--success)' }}>
+            {hasFreeKey
+              ? 'Lokalni OCR + besplatni AI ključ aktivan'
+              : 'Lokalni OCR aktivan (bez ključa)'}
           </strong>
         </p>
-        <ol className="muted" style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.9rem', lineHeight: 1.5 }}>
-          <li>
-            Otvori{' '}
-            <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">
-              platform.openai.com/api-keys
-            </a>{' '}
-            i prijavi se
-          </li>
-          <li>Klikni <strong>Create new secret key</strong>, kopiraj ključ (počinje sa <code>sk-</code>)</li>
-          <li>Nalijepi ga ispod i klikni <strong>Sačuvaj ključ</strong></li>
-          <li>
-            Idi u <strong>Arhiva → Uslikaj / dodaj račun</strong> — AI izvlači artikle, cijene i radnju
-          </li>
-        </ol>
-        <form
-          className="form-grid"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setOpenAiKey(apiKey.trim());
-            setMsg(
-              apiKey.trim()
-                ? 'API ključ sačuvan. Sada možeš uslikati račun u Arhivi.'
-                : 'Ključ je obrisan.',
-            );
+
+        <label className="label">
+          Način čitanja
+          <select
+            className="select"
+            value={provider}
+            onChange={(e) => setProvider(e.target.value as AiProvider)}
+          >
+            <option value="auto">Automatski (Gemini → Groq → lokalni OCR)</option>
+            <option value="gemini">Samo Google Gemini (besplatno)</option>
+            <option value="groq">Samo Groq (besplatno)</option>
+            <option value="tesseract">Samo lokalni OCR (bez ključa)</option>
+          </select>
+        </label>
+
+        <label className="label">
+          Google Gemini API ključ (opciono, besplatno)
+          <input
+            className="input"
+            type="password"
+            value={geminiKey}
+            onChange={(e) => setGeminiKey(e.target.value)}
+            placeholder="AIza..."
+            autoComplete="off"
+          />
+        </label>
+        <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
+          Besplatni ključ:{' '}
+          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
+            aistudio.google.com/apikey
+          </a>
+        </p>
+
+        <label className="label">
+          Groq API ključ (opciono, besplatno)
+          <input
+            className="input"
+            type="password"
+            value={groqKey}
+            onChange={(e) => setGroqKey(e.target.value)}
+            placeholder="gsk_..."
+            autoComplete="off"
+          />
+        </label>
+        <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
+          Besplatni ključ:{' '}
+          <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">
+            console.groq.com/keys
+          </a>
+        </p>
+
+        <button
+          type="button"
+          className="btn btn-action"
+          onClick={() => {
+            setAiSettings({
+              aiProvider: provider,
+              geminiApiKey: geminiKey.trim(),
+              groqApiKey: groqKey.trim(),
+            });
+            setMsg('Podešavanja skeniranja sačuvana. Sve opcije su besplatne.');
           }}
         >
-          <label className="label">
-            OpenAI API ključ
-            <input
-              className="input"
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-proj-... ili sk-..."
-              autoComplete="off"
-            />
-          </label>
-          <button type="submit" className="btn btn-action">
-            Sačuvaj ključ
-          </button>
-        </form>
+          Sačuvaj podešavanja skeniranja
+        </button>
       </section>
     </div>
   );

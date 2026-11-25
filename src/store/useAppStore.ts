@@ -29,6 +29,7 @@ import {
   priceDeltaVsLast,
 } from '../lib/scoring';
 import type {
+  AiProvider,
   AppSettings,
   ArchiveEntry,
   Category,
@@ -72,7 +73,7 @@ interface AppState {
 
   setTheme: (theme: ThemeMode) => void;
   setCityFallback: (city: string) => void;
-  setOpenAiKey: (key: string) => void;
+  setAiSettings: (patch: Partial<Pick<AppSettings, 'aiProvider' | 'geminiApiKey' | 'groqApiKey'>>) => void;
   setOnline: (online: boolean) => void;
   loginEmail: (email: string, password: string) => Promise<void>;
   loginGoogle: () => Promise<void>;
@@ -124,10 +125,22 @@ interface AppState {
 const defaultSettings: AppSettings = {
   theme: 'light',
   cityFallback: 'Sarajevo',
-  openAiApiKey: '',
+  aiProvider: 'auto',
+  geminiApiKey: '',
+  groqApiKey: '',
   firebaseConfigured: isFirebaseConfigured(),
   useMockData: !isFirebaseConfigured(),
 };
+
+function normalizeSettings(raw?: Partial<AppSettings>): AppSettings {
+  return {
+    ...defaultSettings,
+    ...raw,
+    aiProvider: (raw?.aiProvider as AiProvider) || 'auto',
+    geminiApiKey: raw?.geminiApiKey ?? '',
+    groqApiKey: raw?.groqApiKey ?? '',
+  };
+}
 
 async function syncList(list: ShoppingList) {
   try {
@@ -208,7 +221,8 @@ export const useAppStore = create<AppState>()(
 
       setTheme: (theme) => set((s) => ({ settings: { ...s.settings, theme } })),
       setCityFallback: (city) => set((s) => ({ settings: { ...s.settings, cityFallback: city } })),
-      setOpenAiKey: (key) => set((s) => ({ settings: { ...s.settings, openAiApiKey: key } })),
+      setAiSettings: (patch) =>
+        set((s) => ({ settings: normalizeSettings({ ...s.settings, ...patch }) })),
       setOnline: (online) =>
         set({
           online,
@@ -615,6 +629,14 @@ export const useAppStore = create<AppState>()(
         budgetAmount: s.budgetAmount,
         user: s.user,
       }),
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<AppState>;
+        return {
+          ...current,
+          ...p,
+          settings: normalizeSettings(p.settings ?? current.settings),
+        };
+      },
     },
   ),
 );
